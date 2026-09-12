@@ -1,1 +1,0 @@
-ALTER TABLE `images` MODIFY COLUMN `status` enum('pending','in_progress','completed') NOT NULL DEFAULT 'pending';
