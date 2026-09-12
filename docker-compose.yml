@@ -1,0 +1,68 @@
+services:
+  mariadb:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: password
+      MARIADB_DATABASE: image_repo
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-uroot", "-ppassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    image: quay.io/minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  backend:
+    build: ./backend
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 3100
+      DATABASE_URL: mysql://root:password@mariadb:3306/image_repo
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: password
+      DB_NAME: image_repo
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: image-annotations
+      MAX_UPLOAD_SIZE_BYTES: 5242880
+    ports:
+      - "3100:3100"
+    restart: on-failure:5
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  mariadb_data:
+  minio_data:

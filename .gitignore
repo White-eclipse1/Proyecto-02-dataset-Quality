@@ -1,0 +1,21 @@
+# Dependencias y artefactos de compilación (en cualquier paquete)
+node_modules/
+dist/
+build/
+
+# Variables de entorno: se ignora cualquier .env real, pero se versionan
+# las plantillas de ejemplo.
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Logs y archivos del sistema
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Caché de herramientas
+.vite/
+coverage/

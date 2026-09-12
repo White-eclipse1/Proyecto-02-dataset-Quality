@@ -1,0 +1,524 @@
+<title>Auditoría Portal de Anotación</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Roboto+Mono:wght@400;500&display=swap');
+
+  :root {
+    --iteso-azul:        #003C71;
+    --iteso-azul-medio:  #0067A5;
+    --iteso-azul-claro:  #9BC4E2;
+    --gris-texto:        #333333;
+    --gris-borde:        #DDE3E9;
+    --fondo:             #FFFFFF;
+    --ok:                #1E7A3C;
+    --parcial:           #B8860B;
+    --fallo:             #A32020;
+    --fuente: "Gotham", "Montserrat", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --mono: "Roboto Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+
+    --superficie: #FFFFFF;
+    --superficie-2: #F4F8FC;
+    --fila-alt: #EFF5FA;
+    --sombra: 0 1px 2px rgba(0,60,113,.06), 0 6px 20px rgba(0,60,113,.06);
+    --anillo: rgba(0,103,165,.35);
+    --encabezado: var(--iteso-azul);
+    --subtotal-fg: #0d2438;
+    --badge-ok-bg: rgba(30,122,60,.12);   --badge-ok-fg: var(--ok);
+    --badge-parcial-bg: rgba(184,134,11,.14); --badge-parcial-fg: var(--parcial);
+    --badge-fallo-bg: rgba(163,32,32,.12);   --badge-fallo-fg: var(--fallo);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --fondo: #0B1420;
+      --superficie: #101c2c;
+      --superficie-2: #0e1826;
+      --fila-alt: #14243a;
+      --gris-borde: #20344c;
+      --gris-texto: #D6E2EE;
+      --iteso-azul-claro: #2c5378;
+      --sombra: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+      --encabezado: #BFDCF4;
+      --subtotal-fg: #eaf3fb;
+      --badge-ok-bg: rgba(66,196,120,.16); --badge-ok-fg: #6bd99a;
+      --badge-parcial-bg: rgba(224,168,50,.18); --badge-parcial-fg: #e0c060;
+      --badge-fallo-bg: rgba(224,80,80,.18); --badge-fallo-fg: #e08080;
+    }
+  }
+  :root[data-theme="dark"] {
+    --fondo: #0B1420;
+    --superficie: #101c2c;
+    --superficie-2: #0e1826;
+    --fila-alt: #14243a;
+    --gris-borde: #20344c;
+    --gris-texto: #D6E2EE;
+    --iteso-azul-claro: #2c5378;
+    --sombra: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    --encabezado: #BFDCF4;
+    --subtotal-fg: #eaf3fb;
+    --badge-ok-bg: rgba(66,196,120,.16); --badge-ok-fg: #6bd99a;
+    --badge-parcial-bg: rgba(224,168,50,.18); --badge-parcial-fg: #e0c060;
+    --badge-fallo-bg: rgba(224,80,80,.18); --badge-fallo-fg: #e08080;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--fondo);
+    color: var(--gris-texto);
+    font-family: var(--fuente);
+    line-height: 1.55;
+  }
+  h1, h2, h3, h4 { text-wrap: balance; color: var(--encabezado); }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px 64px; }
+
+  /* ---------- Header ---------- */
+  .topbar {
+    background: var(--iteso-azul);
+    color: #fff;
+    padding: 18px 0;
+    margin-bottom: 28px;
+  }
+  .topbar-inner {
+    max-width: 980px; margin: 0 auto; padding: 0 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 18px; }
+  .brand img { height: 48px; width: auto; display: block; }
+  .brand-fallback {
+    font-weight: 700; letter-spacing: .08em; font-size: 1.1rem; color: #fff;
+  }
+  .brand-meta { font-size: .78rem; opacity: .85; letter-spacing: .02em; }
+  .doc-meta {
+    text-align: right; font-size: .82rem; line-height: 1.6; opacity: .95;
+  }
+  .doc-meta strong { font-weight: 700; }
+  .doc-title {
+    max-width: 980px; margin: -4px auto 32px; padding: 0 24px;
+  }
+  .doc-title h1 { font-size: 1.7rem; font-weight: 800; margin: 0 0 4px; }
+  .doc-title p { margin: 0; color: var(--gris-texto); opacity: .8; font-size: .95rem; }
+
+  /* ---------- Result card ---------- */
+  .result-card {
+    background: linear-gradient(155deg, var(--iteso-azul) 0%, var(--iteso-azul-medio) 100%);
+    color: #fff;
+    border-radius: 18px;
+    padding: 28px 32px;
+    display: flex; align-items: center; justify-content: space-between; gap: 28px; flex-wrap: wrap;
+    box-shadow: var(--sombra);
+    margin-bottom: 36px;
+  }
+  .result-score { display: flex; align-items: baseline; gap: 10px; }
+  .result-score .num { font-size: 4rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .result-score .den { font-size: 1.3rem; opacity: .8; }
+  .result-scale {
+    display: inline-block; margin-top: 8px; padding: 4px 14px; border-radius: 999px;
+    background: rgba(255,255,255,.16); font-weight: 700; font-size: .85rem; letter-spacing: .03em;
+  }
+  .result-gate {
+    max-width: 300px; font-size: .85rem; text-align: right; line-height: 1.5;
+  }
+  .result-gate .tag {
+    display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: .78rem;
+    background: rgba(30,122,60,.25); border: 1px solid rgba(255,255,255,.35);
+    padding: 3px 10px; border-radius: 999px; margin-bottom: 6px;
+  }
+
+  /* ---------- Section summary bars ---------- */
+  .summary-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 40px; }
+  .summary-row {
+    display: grid; grid-template-columns: 230px 1fr 70px; align-items: center; gap: 14px;
+    font-size: .88rem;
+  }
+  .summary-row .label { color: var(--gris-texto); }
+  .track { height: 10px; border-radius: 999px; background: var(--iteso-azul-claro); overflow: hidden; }
+  .fill { height: 100%; background: var(--iteso-azul-medio); border-radius: 999px 0 0 999px; }
+  .summary-row .score { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  /* ---------- Generic section ---------- */
+  section.block { margin-bottom: 40px; }
+  section.block > h2 {
+    font-size: 1.15rem; font-weight: 700; margin: 0 0 4px;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  section.block > h2 .subtotal-pill {
+    font-size: .8rem; font-weight: 700; padding: 2px 10px; border-radius: 999px;
+    background: var(--superficie-2); border: 1px solid var(--gris-borde); color: var(--iteso-azul-medio);
+    font-variant-numeric: tabular-nums;
+  }
+  section.block > .desc { margin: 0 0 14px; font-size: .85rem; opacity: .75; }
+
+  /* ---------- Tables ---------- */
+  .table-scroll { overflow-x: auto; border-radius: 12px; box-shadow: var(--sombra); }
+  table {
+    width: 100%; border-collapse: collapse; font-size: .87rem; background: var(--superficie);
+    min-width: 560px;
+  }
+  thead th {
+    background: var(--iteso-azul); color: #fff; text-align: left;
+    padding: 10px 14px; font-weight: 600; font-size: .8rem; letter-spacing: .02em;
+  }
+  tbody td {
+    padding: 10px 14px; border-bottom: 1px solid var(--gris-borde); vertical-align: top;
+  }
+  tbody tr:nth-child(even) { background: var(--fila-alt); }
+  tbody tr.subtotal { background: var(--iteso-azul-claro); font-weight: 700; color: var(--subtotal-fg); }
+  tbody tr.subtotal td { border-bottom: none; }
+  td.req { width: 30%; font-weight: 500; }
+  td.gap { color: var(--gris-texto); }
+  td.gap code, td.req code { background: var(--superficie-2); padding: 1px 5px; border-radius: 4px; font-family: var(--mono); font-size: .82em; }
+  td.pts { white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 700; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px;
+    font-size: .74rem; font-weight: 700; letter-spacing: .01em;
+  }
+  .badge.ok { background: var(--badge-ok-bg); color: var(--badge-ok-fg); }
+  .badge.parcial { background: var(--badge-parcial-bg); color: var(--badge-parcial-fg); }
+  .badge.fallo { background: var(--badge-fallo-bg); color: var(--badge-fallo-fg); }
+
+  .gate-banner {
+    display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 10px;
+    background: rgba(30,122,60,.1); border: 1px solid rgba(30,122,60,.3); color: var(--ok);
+    font-weight: 700; font-size: .9rem; margin-bottom: 18px;
+  }
+
+  /* ---------- Comment / annex ---------- */
+  .comment-card {
+    background: var(--superficie-2); border: 1px solid var(--gris-borde); border-radius: 14px;
+    padding: 22px 26px;
+  }
+  .comment-card h3 { font-size: .95rem; margin: 0 0 8px; }
+  .comment-card ol { margin: 0 0 16px; padding-left: 20px; font-size: .9rem; }
+  .comment-card ol:last-child { margin-bottom: 0; }
+  .comment-card li { margin-bottom: 6px; }
+  .comment-card li::marker { color: var(--iteso-azul-medio); font-weight: 700; }
+
+  pre {
+    background: var(--superficie-2); border: 1px solid var(--gris-borde); border-radius: 10px;
+    padding: 12px 14px; overflow-x: auto; font-family: var(--mono); font-size: .78rem;
+    white-space: pre-wrap; word-break: break-word; color: var(--gris-texto);
+  }
+  .cmd-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 22px; }
+  .cmd-list .cmd { font-family: var(--mono); font-size: .78rem; }
+  .not-verified { font-size: .9rem; }
+  .not-verified li { margin-bottom: 8px; }
+
+  /* ---------- Footer ---------- */
+  footer {
+    margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--gris-borde);
+    font-size: .78rem; opacity: .7; line-height: 1.6;
+  }
+
+  .print-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #fff; color: var(--iteso-azul); border: none; border-radius: 8px;
+    padding: 8px 16px; font-weight: 700; font-size: .82rem; cursor: pointer;
+    font-family: var(--fuente);
+  }
+  .print-btn:hover { background: #eef4fa; }
+
+  @media (max-width: 700px) {
+    .summary-row { grid-template-columns: 1fr; row-gap: 4px; }
+    .summary-row .score { text-align: left; }
+    .doc-meta { text-align: left; }
+    .topbar-inner { flex-direction: column; align-items: flex-start; }
+    .result-card { flex-direction: column; align-items: flex-start; }
+    .result-gate { text-align: left; max-width: none; }
+  }
+
+  @media print {
+    .no-print { display: none !important; }
+    body { background: #fff; }
+    * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .topbar { background: var(--iteso-azul) !important; }
+    section.block { break-inside: avoid; }
+    tr { break-inside: avoid; }
+    .table-scroll { box-shadow: none; }
+    @page { size: A4; margin: 15mm; }
+  }
+</style>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <!-- Reemplazar por el logotipo real si esta ruta cambia: C:\Users\diego\Documents\github\logo_iteso.png -->
+      <img src="data:image/webp;base64,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" alt="ITESO" />
+      <div>
+        <div class="brand-meta">Integración de servicios de aprendizaje automático</div>
+      </div>
+    </div>
+    <div class="doc-meta">
+      <div><strong>Evaluación de proyecto</strong> · Equipo 1</div>
+      <div>Repositorio: proyecto1 · commit <code>e59ba78</code></div>
+      <div>Fecha de evaluación: 2026-09-04</div>
+      <button class="print-btn no-print" onclick="window.print()" style="margin-top:8px" type="button">🖨 Imprimir / PDF</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="doc-title">
+    <h1>Portal de anotación de imágenes — Dictamen técnico</h1>
+    <p>Verificación de evidencia sobre el repositorio real, ejecutado con Node.js, MariaDB y MinIO en vivo (sin mocks). No se calificó intención ni documentación: se calificó lo que el código hace.</p>
+  </div>
+
+  <div class="result-card">
+    <div>
+      <div class="result-score"><span class="num">92</span><span class="den">/ 100</span></div>
+      <span class="result-scale">Excelente (90–100)</span>
+    </div>
+    <div class="result-gate">
+      <span class="tag">✓ Compuerta no activada</span>
+      <div>Los 4 requisitos mínimos (M1–M4) se cumplieron con evidencia ejecutada: arranque desde cero, sin secretos versionados, puertos 3000/3100 correctos y <code>tsc --noEmit</code> limpio.</div>
+    </div>
+  </div>
+
+  <section class="block">
+    <h2>Resumen por sección</h2>
+    <div class="summary-grid">
+      <div class="summary-row"><span class="label">1. Arquitectura y estructura</span><div class="track"><div class="fill" style="width:75%"></div></div><span class="score">9 / 12</span></div>
+      <div class="summary-row"><span class="label">2. Persistencia (Drizzle/MariaDB/MinIO)</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="score">15 / 15</span></div>
+      <div class="summary-row"><span class="label">3. TypeScript y Zod 4</span><div class="track"><div class="fill" style="width:80%"></div></div><span class="score">8 / 10</span></div>
+      <div class="summary-row"><span class="label">4. Portal de anotación</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="score">15 / 15</span></div>
+      <div class="summary-row"><span class="label">5. Dashboard y búsqueda</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="score">12 / 12</span></div>
+      <div class="summary-row"><span class="label">6. Exportación COCO</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="score">12 / 12</span></div>
+      <div class="summary-row"><span class="label">7. Calidad de código (Biome)</span><div class="track"><div class="fill" style="width:87.5%"></div></div><span class="score">7 / 8</span></div>
+      <div class="summary-row"><span class="label">8. SPECs, Gherkin y TDD</span><div class="track"><div class="fill" style="width:90%"></div></div><span class="score">9 / 10</span></div>
+      <div class="summary-row"><span class="label">9. Git y flujo de trabajo</span><div class="track"><div class="fill" style="width:83.3%"></div></div><span class="score">5 / 6</span></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>A · Requisitos mínimos (compuerta)</h2>
+    <div class="gate-banner">✓ Compuerta NO activada — la calificación final no está topada en 60.</div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th style="width:110px">Estado</th><th style="width:30%">Requisito</th><th>Evidencia</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge ok">✓ CUMPLE</span></td><td class="req">M1 — Clona y arranca según el README</td><td class="gap">Seguí el README paso a paso: <code>npm ci</code>, <code>cp .env.example .env</code>, <code>db:migrate</code>, <code>db:seed</code>, <code>npm run dev</code> en backend y frontend. <code>curl :3000/health</code> → <code>{"status":"ok","database":"connected"}</code>. Único ajuste: puerto de MariaDB a <code>:3307</code> por no tener Docker con permisos de admin — el propio README documenta este ajuste como válido.</td></tr>
+          <tr><td><span class="badge ok">✓ CUMPLE</span></td><td class="req">M2 — <code>.env.example</code> sin secretos reales</td><td class="gap"><code>git log --all -p -- '*.env*'</code> revisado completo: solo valores de ejemplo (<code>password</code>, <code>minioadmin</code>), ninguna credencial real en todo el historial.</td></tr>
+          <tr><td><span class="badge ok">✓ CUMPLE</span></td><td class="req">M3 — <code>:3000</code> dev / <code>:3100</code> prod</td><td class="gap"><code>npm run dev</code> → escucha en 3000, 200 OK. <code>npm run build && npm run start:prod</code> → escucha en 3100, 200 OK.</td></tr>
+          <tr><td><span class="badge ok">✓ CUMPLE</span></td><td class="req">M4 — Compila sin errores TS</td><td class="gap"><code>npx tsc --noEmit</code> limpio en <code>backend/</code> y <code>frontend/</code> (exit 0).</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>1. Arquitectura y estructura <span class="subtotal-pill">9 / 12</span></h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th style="width:90px">Puntos</th><th class="req">Requisito</th><th>Lo que falta</th></tr></thead>
+        <tbody>
+          <tr><td class="pts">7 / 7</td><td class="req">1.1 Separación real UI / Lógica / Datos</td><td class="gap">—. <code>server.ts</code> solo importa de <code>../logic/index.js</code>; ningún componente de frontend importa Drizzle ni MinIO.</td></tr>
+          <tr><td class="pts">0 / 3</td><td class="req">1.2 Monolito desplegable con un solo comando</td><td class="gap">No existe <code>docker-compose.yml</code> ni <code>Dockerfile</code>, ni <code>package.json</code> raíz. Levantar la app real exige ≥8 comandos manuales (2 <code>docker run</code> + <code>cd backend</code>: ci/env/migrate/seed/dev + <code>cd frontend</code>: ci/env/dev). El README dice explícitamente "cada carpeta es un paquete npm independiente".</td></tr>
+          <tr><td class="pts">2 / 2</td><td class="req">1.3 Puertos/credenciales/bucket desde <code>.env</code></td><td class="gap">—. Sin hardcodes de <code>localhost</code>/credenciales en <code>src/</code>.</td></tr>
+          <tr class="subtotal"><td class="pts">9 / 12</td><td colspan="2">Subtotal Arquitectura</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>2. Persistencia: Drizzle, MariaDB y MinIO <span class="subtotal-pill">15 / 15</span></h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th style="width:90px">Puntos</th><th class="req">Requisito</th><th>Lo que falta</th></tr></thead>
+        <tbody>
+          <tr><td class="pts">5 / 5</td><td class="req">2.1 Esquema con FKs, índices, tipos correctos</td><td class="gap">—. <code>references()</code> con <code>onDelete cascade/restrict</code>, índices simples y compuestos, <code>uniqueIndex</code>, tipos correctos (<code>bigint</code>, <code>double</code>, <code>mysqlEnum</code>, <code>boolean</code>).</td></tr>
+          <tr><td class="pts">3 / 3</td><td class="req">2.2 Migraciones versionadas desde cero</td><td class="gap">—. <code>npm run db:migrate</code> contra BD recién inicializada aplicó las 3 migraciones sin intervención manual.</td></tr>
+          <tr><td class="pts">4 / 4</td><td class="req">2.3 Imágenes en MinIO, metadatos en MariaDB</td><td class="gap">—. Subí una imagen real: la fila solo guarda <code>storage_key</code>; <code>GET /images/:id/file</code> la sirve desde MinIO. Sin <code>blob</code> en el schema.</td></tr>
+          <tr><td class="pts">3 / 3</td><td class="req">2.4 Seeder idempotente</td><td class="gap">—. Ejecutado 3 veces seguidas: <code>images=2, categories=3</code> en las tres corridas.</td></tr>
+          <tr class="subtotal"><td class="pts">15 / 15</td><td colspan="2">Subtotal Persistencia</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>3. TypeScript y Zod 4 <span class="subtotal-pill">8 / 10</span></h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th style="width:90px">Puntos</th><th class="req">Requisito</th><th>Lo que falta</th></tr></thead>
+        <tbody>
+          <tr><td class="pts">5 / 5</td><td class="req">3.1 <code>strict: true</code>, sin <code>any</code> injustificado</td><td class="gap">—. Ambos <code>tsconfig.json</code> con <code>strict</code> + <code>noUncheckedIndexedAccess</code>. Cero coincidencias de <code>any</code>/<code>@ts-ignore</code>/<code>@ts-expect-error</code> en todo <code>src/</code>.</td></tr>
+          <tr><td class="pts">3 / 5</td><td class="req">3.2 Todo dato externo validado con Zod</td><td class="gap"><code>idParamSchema</code> e <code>imageSearchSchema</code> existen y se prueban en <code>http-validation.test.ts</code>, pero <b>nunca se importan en <code>server.ts</code></b> — son código muerto. Bug reproducible: <code>GET /images/1.5/annotations</code> devuelve <b>200</b> en vez de rechazar el id decimal. Los <i>bodies</i> sí se validan bien con Zod dentro de los servicios.</td></tr>
+          <tr class="subtotal"><td class="pts">8 / 10</td><td colspan="2">Subtotal TypeScript / Zod</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>4. Portal de anotación <span class="subtotal-pill">15 / 15</span></h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th style="width:90px">Puntos</th><th class="req">Requisito</th><th>Lo que falta</th></tr></thead>
+        <tbody>
+          <tr><td class="pts">3 / 3</td><td class="req">4.1 Carga con validación de tipo/tamaño y feedback</td><td class="gap">—. <code>.txt</code> como imagen → 400; PNG de 6&nbsp;MB → 413; <code>sharp</code> verifica que el contenido sea imagen real, no solo el MIME declarado.</td></tr>
+          <tr><td class="pts">6 / 6</td><td class="req">4.2 Crear / mover / redimensionar / borrar / persistir</td><td class="gap">—. Probado en navegador real: creé, moví, redimensioné y borré una caja; tras recargar la página la caja restante conservó su posición exacta.</td></tr>
+          <tr><td class="pts">3 / 3</td><td class="req">4.3 Categorías obligatorias</td><td class="gap">—. El popover deshabilita "Confirmar" sin categoría; el servidor rechaza <code>categoryId: 0</code> y ausente con 400.</td></tr>
+          <tr><td class="pts">3 / 3</td><td class="req">4.4 Zoom, deshacer, navegación, guardar y siguiente</td><td class="gap">—. Zoom a 144% confirmado; "Deshacer" restauró una caja borrada (toast "Deshecho: borrar caja"); con cola de imágenes, "Guardar y siguiente" avanzó realmente a la imagen 2.</td></tr>
+          <tr class="subtotal"><td class="pts">15 / 15</td><td colspan="2">Subtotal Portal de anotación</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>5. Dashboard y búsqueda <span class="subtotal-pill">12 / 12</span></h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th style="width:90px">Puntos</th><th class="req">Requisito</th><th>Lo que falta</th></tr></thead>
+        <tbody>
+          <tr><td class="pts">4 / 4</td><td class="req">5.1 Métricas calculadas desde la BD</td><td class="gap">—. Anoté una imagen vía API y el dashboard reflejó el cambio (<code>boundingBoxes: 0→2</code>) sin tocar código.</td></tr>
+          <tr><td class="pts">3 / 3</td><td class="req">5.2 Gráficas con datos reales</td><td class="gap">—. Vistas en navegador: barras por clase y donut de progreso reflejando el estado real de la BD.</td></tr>
+          <tr><td class="pts">3 / 3</td><td class="req">5.3 Búsqueda AND/OR resuelta en SQL</td><td class="gap">—. <code>exists()</code> con subconsulta correlacionada por término. Probado: <code>car AND person</code>→0, <code>car OR person</code>→2, mezclar operadores→400.</td></tr>
+          <tr><td class="pts">2 / 2</td><td class="req">5.4 Filtros combinables + paginación</td><td class="gap">—. <code>LIMIT/OFFSET</code> reales; <code>pageSize=1</code> devolvió <code>total:3, totalPages:3</code> consistente con el conteo real.</td></tr>
+          <tr class="subtotal"><td class="pts">12 / 12</td><td colspan="2">Subtotal Dashboard y búsqueda</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>6. Salida del dataset en formato COCO <span class="subtotal-pill">12 / 12</span></h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th style="width:90px">Puntos</th><th class="req">Requisito</th><th>Lo que falta</th></tr></thead>
+        <tbody>
+          <tr><td class="pts">7 / 7</td><td class="req">6.1 JSON válido, ids consistentes</td><td class="gap">—. Exportación real: cada <code>image_id</code>/<code>category_id</code> referenciado existe en su sección correspondiente.</td></tr>
+          <tr><td class="pts">3 / 3</td><td class="req">6.2 bbox en píxeles absolutos, area, iscrowd</td><td class="gap">—. <code>bbox=[5,5,30,40]</code> coincide con los píxeles enviados; <code>area=1200=30×40</code>. Mutación manual (invertí width/height) hizo fallar la prueba como se esperaba; restaurado.</td></tr>
+          <tr><td class="pts">2 / 2</td><td class="req">6.3 Exportación descargable</td><td class="gap">—. Botón real <code>&lt;a href="/api/export/coco"&gt;</code> con <code>Content-Disposition: attachment</code>, no un <code>console.log</code>.</td></tr>
+          <tr class="subtotal"><td class="pts">12 / 12</td><td colspan="2">Subtotal Exportación COCO</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>7. Calidad de código con Biome <span class="subtotal-pill">7 / 8</span></h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th style="width:90px">Puntos</th><th class="req">Requisito</th><th>Lo que falta</th></tr></thead>
+        <tbody>
+          <tr><td class="pts">2 / 3</td><td class="req">7.1 <code>biome.json</code> versionado + script</td><td class="gap"><code>backend/biome.json</code> tiene reglas propias (comillas simples, <code>noNonNullAssertion</code>, ancho 100) y scripts <code>lint</code>/<code>lint:fix</code>/<code>format</code>. El <b>frontend no tiene <code>biome.json</code> ni script <code>lint</code></b>.</td></tr>
+          <tr><td class="pts">4 / 4</td><td class="req">7.2 <code>biome check .</code> cero errores/advertencias</td><td class="gap">—. El primer intento marcó 36 "errores" por mi <code>core.autocrlf=true</code> local (LF→CRLF). Verificado con <code>git archive</code> (blobs crudos) + <code>npm ci</code> + <code>biome check .</code>: cero errores sobre el contenido real del repo.</td></tr>
+          <tr><td class="pts">1 / 1</td><td class="req">7.3 Nombres, estructura y estilo consistentes</td><td class="gap">—. Estructura <code>ui/logic/data</code> consistente y nombres de archivo uniformes.</td></tr>
+          <tr class="subtotal"><td class="pts">7 / 8</td><td colspan="2">Subtotal Biome</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>8. SPECs, Gherkin y TDD <span class="subtotal-pill">9 / 10</span></h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th style="width:90px">Puntos</th><th class="req">Requisito</th><th>Lo que falta</th></tr></thead>
+        <tbody>
+          <tr><td class="pts">4 / 4</td><td class="req">8.1 Trazabilidad regla → SPEC → feature → test</td><td class="gap">—. Tracé 5 reglas (más de las 3 pedidas): SPEC-ANNOT-001, SPEC-DASH-001, SPEC-COCO-001, SPEC-SEARCH-001, SPEC-UPLOAD-001, todas con Given/When/Then reales y correspondencia 1:1 con sus tests.</td></tr>
+          <tr><td class="pts">3 / 4</td><td class="req">8.2 Evidencia Red → Green → Refactor en commits</td><td class="gap">Encontré 2 ciclos claros y verificados (upload validation stage2; botón de exportar COCO — confirmé que el botón no existía antes del commit de prueba). Son 2 ciclos aislados sobre 76 commits totales; el resto de features llega en commits grandes de una sola vez.</td></tr>
+          <tr><td class="pts">2 / 2</td><td class="req">8.3 Prueba de mutación manual</td><td class="gap">—. Invertí width/height en <code>coco-export.builder.ts</code> → 1 test falló. Quité <code>.positive()</code> de <code>categoryId</code> → 2 tests fallaron. Ambos restaurados; suite completa volvió a 82/82 verde.</td></tr>
+          <tr class="subtotal"><td class="pts">9 / 10</td><td colspan="2">Subtotal SPECs / TDD</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>9. Git y flujo de trabajo <span class="subtotal-pill">5 / 6</span></h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th style="width:90px">Puntos</th><th class="req">Requisito</th><th>Lo que falta</th></tr></thead>
+        <tbody>
+          <tr><td class="pts">2 / 2</td><td class="req">9.1 <code>main</code> estable</td><td class="gap">—. <code>tsc --noEmit</code> limpio en HEAD y en un punto histórico anterior (merge de fase 2), verificado con un worktree temporal.</td></tr>
+          <tr><td class="pts">1 / 2</td><td class="req">9.2 Commits pequeños y participación de todo el equipo</td><td class="gap">Distribución desigual: <code>karenelizabg</code> 47/76 commits (62%), <code>Ikram</code> 14, <code>OmarRA</code> 7 (2 alias de correo), <code>Diego Lemus</code> 5 — <b>los 5 son exclusivamente "Merge pull request", cero código propio</b>.</td></tr>
+          <tr><td class="pts">2 / 2</td><td class="req">9.3 <code>.gitignore</code> correcto</td><td class="gap">—. <code>git ls-files | grep -E "node_modules|\.env$|\.(png|jpg|jpeg)$"</code> sin resultados.</td></tr>
+          <tr class="subtotal"><td class="pts">5 / 6</td><td colspan="2">Subtotal Git</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Resultado final</h2>
+    <div class="table-scroll">
+      <table>
+        <tbody>
+          <tr><td class="req" style="width:60%">Suma de secciones</td><td class="pts">92 / 100</td></tr>
+          <tr><td class="req">Compuerta aplicada</td><td class="pts">No</td></tr>
+          <tr class="subtotal"><td>CALIFICACIÓN FINAL</td><td class="pts">92</td></tr>
+          <tr><td class="req">Escala</td><td class="pts">Excelente (90–100)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Comentario para el equipo</h2>
+    <div class="comment-card">
+      <h3>Los 3 aciertos más sólidos</h3>
+      <ol>
+        <li>La separación UI→Logic→Data es real y se respeta en cada archivo: <code>server.ts</code> jamás toca Drizzle ni MinIO directamente, solo la capa <code>logic</code>.</li>
+        <li>El portal de anotación funciona de punta a punta — probamos crear, mover, redimensionar, borrar y recargar cajas en el navegador real, y todo persiste correctamente en MariaDB.</li>
+        <li>La búsqueda con <code>AND</code>/<code>OR</code> está resuelta con subconsultas <code>EXISTS</code> en SQL de verdad (no en memoria), y el seeder es genuinamente idempotente tras tres corridas.</li>
+      </ol>
+      <h3>Las 3 cosas que más costaron puntos</h3>
+      <ol>
+        <li>No hay forma de levantar el proyecto con un solo comando: falta un <code>docker-compose.yml</code> que orqueste MariaDB, MinIO, backend y frontend.</li>
+        <li><code>idParamSchema</code> e <code>imageSearchSchema</code> se escribieron y probaron, pero nunca se conectaron a las rutas reales — hoy <code>/images/1.5/annotations</code> acepta un id decimal que debería rechazarse.</li>
+        <li>El frontend no tiene Biome configurado, y la evidencia de TDD (Red-Green-Refactor) solo aparece en 2 de los 76 commits del repositorio.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Anexo de verificación</h2>
+    <p class="desc">Comandos ejecutados contra el repositorio real (no simulados) y resultado resumido.</p>
+    <div class="cmd-list">
+      <pre>git log / git shortlog -sne --all / git branch -a
+→ 76 commits, 4 contribuyentes de código reales identificados.</pre>
+      <pre>winget install OpenJS.NodeJS.LTS
+→ Node.js v24.19.0 instalado (el entorno no lo traía).
+mariadb-install-db + mysqld --port=3307 (portátil, sin Docker/admin)
+minio.exe server ./data --address :9000 (standalone, sin Docker)
+→ ambos servicios arriba y usados para todo lo demás.</pre>
+      <pre>cd backend && npm ci && cp ../.env.example .env
+npm run db:migrate  → "migrations applied successfully"
+npm run db:seed (x3) → images=2, categories=3 en las tres corridas (idempotente)
+npm run dev   → "Servidor escuchando en http://localhost:3000"
+npm run build && npm run start:prod → "...localhost:3100"</pre>
+      <pre>npm run typecheck (backend y frontend) → sin salida, exit 0
+npm run build (frontend, vite) → build exitoso (714 kB bundle, solo warning de tamaño)
+npm test (backend) → 6 archivos, 82/82 tests
+npm test (frontend) → 1 archivo, 2/2 tests</pre>
+      <pre>npx biome check .  → 36 "errores" (falso positivo por core.autocrlf local)
+git archive HEAD | tar -x  → checkout limpio con LF real
+npm ci && npx biome check . → "Checked 36 files... No fixes applied" (0 errores)</pre>
+      <pre>curl :3000/health, /categories, /images/search, /images/:id/annotations,
+     /dashboard/summary, /export/coco, POST /images (upload), etc.
+→ decenas de llamadas reales contra endpoints en ejecución, incluida sesión
+  de navegador real contra el frontend en :5173 (crear/mover/borrar cajas,
+  zoom, deshacer, cola de anotación, exportar COCO, filtros de búsqueda).</pre>
+      <pre>Mutación 1: invertir width/height en coco-export.builder.ts → 1 test falló → restaurado.
+Mutación 2: quitar .positive() de categoryId en annotation.validation.ts → 2 tests fallaron → restaurado.
+npm test tras restaurar → 82/82 verde otra vez.</pre>
+    </div>
+
+    <h3 style="font-size:.95rem; margin-bottom:8px;">Lo que no se pudo verificar y por qué</h3>
+    <ul class="not-verified">
+      <li><b>Docker real:</b> no instalé Docker Desktop (requiere administrador, WSL2/Hyper-V y reinicio, inviable en esta sesión). Se usó MariaDB/MinIO portátiles funcionalmente equivalentes; no se verificó el <code>docker run</code> del README de forma literal, aunque son imágenes oficiales estándar.</li>
+      <li><b>Estabilidad de <code>main</code> en cada commit histórico:</b> solo se hizo spot-check en 2 puntos (HEAD y un merge intermedio de fase 2), no en los 76 commits.</li>
+      <li><b><code>trazabilidad-spec-gherkin-tdd.xlsx</code>:</b> no está versionado en git (aparece como <i>untracked</i> en <code>git status</code>), por lo que no forma parte del repositorio evaluado y no se usó como evidencia.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Reporte generado automáticamente a partir del estado del repositorio en el commit indicado. La calificación es revisable a solicitud del equipo.<br>
+    Integración de Servicios de Aprendizaje Automático · ITESO · Ciclo 2026
+  </footer>
+
+</div>
