@@ -12,7 +12,7 @@ El objetivo principal es garantizar que una versión del dataset solo pueda ser 
 
 ## Team 3
 
-- Hannah Puente
+- Hannah Chenoa
 - Diego Lemus
 - Mauricio Figueroa
 - Santiago Ortiz
