@@ -76,3 +76,22 @@ COCO Dataset
          │
          ├──► DEV  / MinIO
          └──► PROD / AWS S3
+```
+
+---
+
+## Pipeline (Python)
+
+El pipeline de calidad vive en [`pipeline/`](pipeline/), como paquete Python separado del portal de anotación (`backend/`, `frontend/`). Fijado a Python 3.12 (`pipeline/pyproject.toml`, `pipeline/Dockerfile`).
+
+Setup local:
+
+```bash
+cd pipeline
+cp .env.example .env
+pip install -r requirements.txt -r requirements-dev.txt
+ruff check .
+pytest
+```
+
+Las dependencias se editan en `requirements.in` / `requirements-dev.in` y se recompilan con `pip-compile --generate-hashes` hacia `requirements.txt` / `requirements-dev.txt`. Nunca se editan a mano los `.txt` compilados — si se hace, se pierde el hash-locking.
