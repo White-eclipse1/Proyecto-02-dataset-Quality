@@ -1,23 +1,13 @@
-import '@testing-library/jest-dom/vitest';
-import {
-  cleanup,
-  render,
-  screen,
-} from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import {
-  afterEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from 'vitest';
+import "@testing-library/jest-dom/vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DashboardPage } from '../src/pages/Dashboard';
+import { DashboardPage } from "../src/pages/Dashboard";
 
-vi.mock('../src/hooks/useDashboardSummary', () => ({
+vi.mock("../src/hooks/useDashboardSummary", () => ({
   useDashboardSummary: () => ({
-    status: 'loading',
+    status: "loading",
   }),
 }));
 
@@ -29,31 +19,28 @@ function renderDashboard() {
   render(
     <MemoryRouter>
       <DashboardPage />
-    </MemoryRouter>,
+    </MemoryRouter>
   );
 }
 
-describe('SPEC-COCO-UI-001 - exportación COCO desde Dashboard', () => {
-  it('muestra la acción Exportar COCO', () => {
+describe("SPEC-COCO-UI-001 - exportación COCO desde Dashboard", () => {
+  it("muestra la acción Exportar COCO", () => {
     renderDashboard();
 
     expect(
-      screen.getByRole('link', {
+      screen.getByRole("link", {
         name: /exportar coco/i,
-      }),
+      })
     ).toBeInTheDocument();
   });
 
-  it('la acción apunta al endpoint de exportación COCO', () => {
+  it("la acción apunta al endpoint de exportación COCO", () => {
     renderDashboard();
 
-    const exportLink = screen.getByRole('link', {
+    const exportLink = screen.getByRole("link", {
       name: /exportar coco/i,
     });
 
-    expect(exportLink).toHaveAttribute(
-      'href',
-      '/api/export/coco',
-    );
+    expect(exportLink).toHaveAttribute("href", "/api/export/coco");
   });
 });
