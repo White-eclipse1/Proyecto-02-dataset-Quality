@@ -21,7 +21,11 @@ class Settings(BaseSettings):
     object_store_endpoint_url: str | None = "http://localhost:9000"
     object_store_access_key: str = "minioadmin"
     object_store_secret_key: str = "minioadmin"
-    object_store_bucket: str = "dataset-quality"
+    # Source bucket: where Tier 1 ingestion reads the raw Proyecto 1 dataset from
+    # (same bucket the backend uploads images into). NOT the dvc-cache /
+    # dataset-releases buckets from the DVC/Terraform ticket — those version
+    # pipeline outputs, a different role.
+    object_store_bucket: str = "image-annotations"
     object_store_region: str = "us-east-1"
     object_store_use_ssl: bool = False
 
