@@ -121,5 +121,5 @@ def test_versioned_quality_contract_example_validates_with_pydantic() -> None:
 
     report = QualityReport.model_validate(payload)
 
-    assert report.dataset_version == "v0.1.0-example"
+    assert report.dataset_version == "v0.2.0-mock"
     assert report.checks[0].id == "min_images_per_class"
