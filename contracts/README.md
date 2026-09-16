@@ -35,12 +35,33 @@ Data Quality y MLOps antes de mergear, y quedar reflejado en este README.
   sincronización DEV (MinIO) / PROD (S3), y diff entre versión actual y
   anterior. Lo consume la pantalla **Versions**.
 
+## Reconciliación con DQ-02
+
+`DQ-02` definió la política real de la Quality Gate (`pipeline/quality.yaml`)
+y los modelos Pydantic que la validan (`pipeline/src/dataset_quality/quality_gate/`).
+Al mergear `main` en esta rama se ajustó `quality.json` para que coincida
+exactamente con esa política:
+
+- Los 5 checks (`min_images_per_class`, `class_imbalance`, `small_objects`,
+  `duplicates`, `invalid_boxes`) usan el mismo `threshold`, `severity` y
+  `unit` que `quality.yaml`.
+- Se quitó el check `spatial_bias`: no está definido en la política de
+  DQ-02 y el motor de evaluación (`evaluate_policy`) solo puede producir
+  un resultado por check declarado ahí, así que un check fuera de esa
+  lista nunca aparecería en una salida real. Si se retoma más adelante,
+  debe agregarse primero a `quality.yaml` con un `threshold` numérico
+  (el modelo `QualityCheckResult` no permite `threshold`/`observed`
+  nulos).
+- Se quitaron los campos `_contract`/`_note` del nivel superior: el
+  modelo `QualityReport` usa `extra = "forbid"`, así que cualquier campo
+  fuera de `dataset_version`, `generated_at`, `overall_status` y `checks`
+  rompe la validación real del pipeline.
+
+Verificado cargando este archivo con el `QualityReport` real de DQ-02
+(`QualityReport.model_validate(...)`): valida sin errores y los 5 checks
+coinciden 1:1 con `quality.yaml`.
+
 ## Pendiente (fuera de alcance de APP-01)
 
-- Validación formal de este contrato con los owners de Data Quality
-  (`quality.yaml`, analizadores) y MLOps (DVC, splits) — se acuerda en
-  conversación de equipo, no solo en este PR.
-- Modelos Pydantic v2 que validen estas mismas formas del lado del
-  pipeline (`DQ-01`).
 - Consumo real desde la Web App una vez exista el scaffolding de rutas
   (`APP-02`).
