@@ -1,6 +1,4 @@
 {
-  "_contract": "quality.json",
-  "_note": "Mock fixture for APP-01. Shape only — numbers are illustrative, not real pipeline output.",
   "dataset_version": "v0.2.0-mock",
   "generated_at": "2026-09-15T22:10:00Z",
   "overall_status": "fail",
@@ -62,7 +60,7 @@
       "status": "pass",
       "threshold": 5,
       "observed": 2,
-      "unit": "hamming distance",
+      "unit": "count",
       "details": {
         "pairs_found": 2
       },
@@ -79,21 +77,6 @@
       "observed": 0,
       "unit": "count",
       "details": {},
-      "offending_samples": []
-    },
-    {
-      "id": "spatial_bias",
-      "label": "Spatial bias of bounding box centers",
-      "severity": "warn",
-      "status": "pass",
-      "threshold": null,
-      "observed": null,
-      "unit": "descriptive",
-      "details": {
-        "centroid_mean_xy": [0.51, 0.47],
-        "centroid_median_xy": [0.50, 0.46],
-        "centroid_p90_xy": [0.83, 0.81]
-      },
       "offending_samples": []
     }
   ]
