@@ -1,7 +1,7 @@
 {
   "_contract": "quality.json",
   "_note": "Mock fixture for APP-01. Shape only — numbers are illustrative, not real pipeline output.",
-  "dataset_version": "v0.1.0-mock",
+  "dataset_version": "v0.2.0-mock",
   "generated_at": "2026-09-15T22:10:00Z",
   "overall_status": "fail",
   "checks": [
