@@ -1,0 +1,38 @@
+{
+  "dataset_version": "v0.1.0-example",
+  "generated_at": "2026-09-15T00:00:00Z",
+  "overall_status": "fail",
+  "checks": [
+    {
+      "id": "min_images_per_class",
+      "label": "Minimum images per class",
+      "severity": "fail",
+      "status": "fail",
+      "threshold": 300,
+      "observed": 214,
+      "unit": "images",
+      "details": {
+        "classes_below_threshold": [
+          {"class": "bicycle", "images": 214}
+        ]
+      },
+      "offending_samples": [
+        {"image_id": "img_00412", "class": "bicycle"}
+      ]
+    },
+    {
+      "id": "class_imbalance",
+      "label": "Class imbalance ratio",
+      "severity": "warn",
+      "status": "warn",
+      "threshold": 3.0,
+      "observed": 4.2,
+      "unit": "majority/minority ratio",
+      "details": {
+        "majority_class": "car",
+        "minority_class": "bicycle"
+      },
+      "offending_samples": []
+    }
+  ]
+}
