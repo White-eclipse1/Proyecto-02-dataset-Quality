@@ -28,7 +28,14 @@ export interface PendingEntry {
 }
 
 function makeClientId(): string {
-  return `upload-${crypto.randomUUID()}`;
+  // crypto.randomUUID() only exists in secure contexts (HTTPS or http://localhost).
+  // This id is just a client-side React key for the upload queue — never sent to
+  // the backend — so a non-cryptographic fallback is fine over plain HTTP on a
+  // non-localhost host (e.g. an EC2 instance without TLS in front of it).
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `upload-${crypto.randomUUID()}`;
+  }
+  return `upload-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 export function useUploadQueue(
