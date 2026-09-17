@@ -61,6 +61,39 @@ Verificado cargando este archivo con el `QualityReport` real de DQ-02
 (`QualityReport.model_validate(...)`): valida sin errores y los 5 checks
 coinciden 1:1 con `quality.yaml`.
 
+## Reconciliación con APP-06
+
+`APP-06` agrega el servidor MCP de solo lectura y el Dataset Copilot
+(`pipeline/src/dataset_quality/copilot/`), que leen los tres contratos de
+este directorio (`quality.json`, `splits.json`, `versions.json`) tal cual
+están en disco — es el único I/O del Copilot (ver `copilot/store.py`).
+
+`versions.json` (Tier 5) no tenía todavía un modelo Pydantic estricto —
+`quality.json` ya lo tiene desde `DQ-02`, y `splits.json` lo obtiene en
+`APP-04` (rama `feat/app-04-stratified-splits`, aún sin mergear). `APP-06`
+define `VersionsReport` (`copilot/contracts.py`, `extra = "forbid"`) como
+el modelo real de `versions.json`, y al reconciliar se ajustó el archivo:
+
+- Se quitaron los campos `_contract`/`_note` del nivel superior, igual que
+  se hizo con `quality.json` en `DQ-02`: `VersionsReport` no permite campos
+  fuera de `current_version` y `versions`, así que cualquier metadato de
+  mock rompe la validación real.
+- No se tocó la forma de `environments` (`dev`/`prod`) ni `diff_from_previous`:
+  ya coincidían campo por campo con `VersionEnvironments`/`VersionDiff`.
+
+Verificado cargando este archivo con el `VersionsReport` real de APP-06
+(`VersionsReport.model_validate(...)`): valida sin errores
+(`tests/test_copilot.py::test_real_versions_contract_validates_with_the_new_model`).
+
+Para `splits.json`, el Copilot usa a propósito un modelo propio y más
+permisivo (`SplitsSummary`, `extra = "ignore"`) en lugar del `SplitResult`
+estricto de `APP-04`, porque esa rama todavía no está en `main` y `APP-06`
+no está bloqueado por `APP-04` en las dependencias declaradas del ticket
+(solo por `APP-01`/`DQ-02`). Queda un `TODO(APP-04 merge)` en
+`copilot/contracts.py` para reemplazarlo por el `SplitResult` real una vez
+que `feat/app-04-stratified-splits` se mergee — sin eso, ninguna
+herramienta del Copilot deja de funcionar contra `main` hoy.
+
 ## Pendiente (fuera de alcance de APP-01)
 
 - Consumo real desde la Web App una vez exista el scaffolding de rutas
