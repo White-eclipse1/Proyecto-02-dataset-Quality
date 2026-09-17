@@ -11,7 +11,10 @@
     "includes": [
       "src/**/*.ts",
       "src/**/*.tsx",
+      "tests/**/*.ts",
+      "tests/**/*.tsx",
       "vite.config.ts",
+      "vitest.config.ts",
       "tailwind.config.ts",
       "postcss.config.js",
       "biome.json"

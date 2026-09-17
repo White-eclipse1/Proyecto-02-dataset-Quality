@@ -1,0 +1,87 @@
+import { QualityStatusBadge } from "@/components/dataset/QualityStatusBadge";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { useContractFetch } from "@/hooks/useContractFetch";
+import { qualityReportSchema } from "@/lib/contracts/schemas";
+
+/**
+ * Overview: estado del quality gate y resumen de checks, leído de
+ * contracts/quality.json (mock de APP-01, ver contracts/README.md — todavía
+ * no viene del pipeline real). Ningún número aquí está hardcodeado: todo
+ * sale del fetch, así que cambiar el JSON público cambia lo que se ve sin
+ * tocar este archivo.
+ */
+export function OverviewPage() {
+  const report = useContractFetch("/contracts/quality.json", qualityReportSchema);
+
+  return (
+    <main className="flex-1 px-6 py-6 lg:px-10 lg:py-8">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6">
+        <header>
+          <h1 className="text-xl font-semibold text-ink">Overview</h1>
+          <p className="mt-1 text-sm text-ink-muted">
+            Estado general de calidad del dataset y su quality gate.
+          </p>
+        </header>
+
+        {report.status === "loading" && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Skeleton className="h-28" />
+            <Skeleton className="h-28" />
+            <Skeleton className="h-28" />
+          </div>
+        )}
+
+        {report.status === "error" && (
+          <ErrorState
+            title="No se pudo cargar el estado de calidad."
+            message={report.message}
+            onRetry={report.reload}
+          />
+        )}
+
+        {report.status === "success" && (
+          <div className="flex flex-col gap-6">
+            <div className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm text-ink-muted">Versión evaluada</p>
+                  <p className="mt-1 text-lg font-semibold text-ink">
+                    {report.data.dataset_version}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <p className="text-sm text-ink-muted">Estado del gate</p>
+                  <QualityStatusBadge status={report.data.overall_status} />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {report.data.checks.map((check) => (
+                <div
+                  key={check.id}
+                  className="rounded-2xl border border-border bg-surface p-5 shadow-card"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-ink">{check.label}</p>
+                    <QualityStatusBadge status={check.status} />
+                  </div>
+                  <p className="mt-2 text-xs text-ink-muted">
+                    Severidad configurada: <span className="font-medium">{check.severity}</span>
+                  </p>
+                  {check.observed !== null && check.threshold !== null && (
+                    <p className="mt-1 text-xs text-ink-muted">
+                      Observado {check.observed} {check.unit} — umbral {check.threshold}{" "}
+                      {check.unit}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
