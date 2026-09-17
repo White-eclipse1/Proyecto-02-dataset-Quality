@@ -61,7 +61,36 @@ Verificado cargando este archivo con el `QualityReport` real de DQ-02
 (`QualityReport.model_validate(...)`): valida sin errores y los 5 checks
 coinciden 1:1 con `quality.yaml`.
 
-## Pendiente (fuera de alcance de APP-01)
+## Reconciliación con APP-04
+
+`APP-04` implementó el generador de splits real
+(`pipeline/src/dataset_quality/splits/`) y su modelo de salida
+`SplitResult` (`pipeline/src/dataset_quality/splits/models.py`), que
+también usa `extra = "forbid"`. Se ajustó `splits.json`:
+
+- Se quitaron los campos `_contract`/`_note` del nivel superior, por la
+  misma razón que en la reconciliación de `quality.json` con DQ-02: son
+  metadata del mock, no parte de la forma real que produce el pipeline.
+- El resto del archivo (proporciones, `tolerance`, totales, distribución
+  de clases, `leakage_check`, `reproducibility_check`) ya tenía exactamente
+  la forma que `SplitResult` produce — no fue necesario cambiar nada más.
+
+Verificado cargando este archivo con `SplitResult.model_validate(...)`:
+valida sin errores (`pipeline/tests/test_splits.py`).
+
+Las cifras siguen siendo ilustrativas (mock de APP-01) — `APP-04` fija la
+forma real de la salida, pero todavía no corre contra un dataset real;
+eso es alcance de `APP-07` (conectar la Web App a las salidas reales del
+pipeline).
+
+## Pendiente (fuera de alcance de APP-01 / APP-04)
 
 - Consumo real desde la Web App una vez exista el scaffolding de rutas
-  (`APP-02`).
+  (`APP-02`, ya completo).
+- Reemplazar las cifras mock de `splits.json` por una corrida real del
+  generador de `APP-04` sobre el dataset del equipo — eso, y conectar
+  `quality.json`/`versions.json` a sus fuentes reales, es alcance de
+  `APP-07`.
+- Reconciliar `versions.json` con quien implemente el versionado real vía
+  DVC (Tier 5, MLOps) — todavía no tiene un modelo Pydantic estricto
+  equivalente a `QualityReport`/`SplitResult` que lo valide.
