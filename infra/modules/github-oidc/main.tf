@@ -32,9 +32,14 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
+      # GitHub's sub claim now appends immutable numeric IDs after `@` for
+      # both org and repo (repo:OWNER@OWNER_ID/REPO@REPO_ID:ref:...), not
+      # the classic repo:OWNER/REPO:ref:... format most docs still show —
+      # confirmed by decoding an actual token from this workflow. The `@*`
+      # wildcards only the ID portion; org/repo names are still exact-matched.
       values = [
         for branch in var.allowed_branches :
-        "repo:${var.github_org}/${var.github_repo}:ref:refs/heads/${branch}"
+        "repo:${var.github_org}@*/${var.github_repo}@*:ref:refs/heads/${branch}"
       ]
     }
   }
