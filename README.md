@@ -36,6 +36,46 @@ El pipeline puede terminar en dos estados:
 
 ---
 
+## Levantar el stack (Web App)
+
+<!-- APP-09: la validación de "clonar limpio y arrancar todo con solo el
+README" encontró que este proyecto no tenía ningún paso a paso explícito
+para levantar la Web App -- solo una mención de pasada dentro de la sección
+del pipeline de Python. Esta sección lo cubre. -->
+
+Requisitos: Docker y Docker Compose (`docker compose version`). No hace falta
+Node, Python ni ninguna base de datos instalada localmente -- todo corre en
+contenedores.
+
+Desde la raíz del repo, sin ningún paso manual previo (no hay que copiar
+ningún `.env`; las variables ya están fijadas en `docker-compose.yml` para
+desarrollo local):
+
+```bash
+docker compose up --build
+```
+
+Esto levanta los cuatro servicios por defecto (`mariadb`, `minio`, `backend`
+y `frontend`, ver `docker-compose.yml`) -- **no** incluye el pipeline de
+Python, que vive detrás de un profile aparte (ver
+[Pipeline (Python)](#pipeline-python) más abajo). De esos cuatro, tres
+exponen una URL a la que entrar desde el navegador (MariaDB no tiene UI
+propia, solo la usa `backend` internamente):
+
+- Web App: http://localhost:8080
+- API (backend): http://localhost:3100
+- Consola de MinIO: http://localhost:9001 (usuario/clave: `minioadmin` / `minioadmin`)
+
+El backend aplica migraciones y siembra datos de ejemplo automáticamente al
+arrancar (`backend/docker/entrypoint.sh`) -- no hace falta ningún paso manual
+de base de datos. La primera vez tarda un poco más porque construye las
+imágenes de `backend` y `frontend`.
+
+Para bajar el stack: `docker compose down` (agrega `-v` si además quieres
+borrar los volúmenes de datos de MariaDB/MinIO y arrancar desde cero).
+
+---
+
 # Arquitectura
 
 El flujo general del proyecto es:
