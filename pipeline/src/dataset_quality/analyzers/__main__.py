@@ -11,17 +11,20 @@ Duplicate detection needs actual image pixels (find_near_duplicate_images opens 
 PIL). The COCO export only carries each image's original filename, not its MinIO
 storage_key — but COCO image ids are the same as the backend's `images.id` (coco-export
 reuses DB ids as-is), so this looks storage_key up by id and downloads each object from the
-configured object store. If the DB/object store for this exact dataset isn't reachable in
-a given run (e.g. running against a different environment than the one it was annotated
-in), this degrades to `duplicates: 0` — deliberately logged as degraded, not silently
-presented as a clean measurement.
+configured object store.
+
+`duplicates` is a `severity: fail` check in quality.yaml — Data Quality Engineer's own
+policy treats it as release-blocking. If the DB/object store isn't reachable, this stage
+fails closed (raises, non-zero exit, no quality.json produced) rather than reporting
+`duplicates: 0`: a fabricated "0" would let a dataset that was never actually checked for
+duplicates sail through a check specifically designed to block on them. A crash you notice
+is safer than a false pass you don't.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 import tempfile
 from pathlib import Path
 
@@ -44,43 +47,51 @@ from dataset_quality.config.clients import get_db_engine
 from dataset_quality.storage.object_store import ObjectStore
 
 
+class DuplicateBytesUnavailableError(RuntimeError):
+    """Raised when real image bytes can't be resolved for the duplicates check.
+
+    Deliberately lets this propagate and crash the `analyze` stage rather than being
+    caught anywhere — see module docstring for why a crash is the safer failure mode
+    here than a fabricated `duplicates: 0`.
+    """
+
+
 def _find_duplicates(image_ids: list[int]) -> list[tuple[int, int]]:
-    """Best-effort real pHash duplicate pairs; degrades to [] (logged) if unreachable.
+    """Real pHash duplicate pairs, fetched from the configured DB/object store.
 
     Returned pairs feed both the quality_gate observation (as a count) and the
     split stage's leakage prevention (generate_splits(duplicate_pairs=...)).
+    Raises DuplicateBytesUnavailableError if the images can't be resolved — see
+    module docstring.
     """
 
-    try:
-        engine = get_db_engine()
-        with engine.connect() as conn, tempfile.TemporaryDirectory() as tmp_dir:
-            rows = (
-                conn.execute(
-                    text("SELECT id, storage_key FROM images WHERE id IN :ids"),
-                    {"ids": tuple(image_ids)},
-                ).fetchall()
-                if image_ids
-                else []
-            )
-            if not rows:
-                raise RuntimeError("no matching rows in images table")
-
-            store = ObjectStore.from_settings()
-            references = []
-            for image_id, storage_key in rows:
-                local_path = Path(tmp_dir) / f"{image_id}"
-                local_path.write_bytes(store.get_bytes(storage_key))
-                references.append(ImageReference(image_id=image_id, path=local_path))
-
-            result = find_near_duplicate_images(references)
-            return [(pair.image_id_a, pair.image_id_b) for pair in result.pairs]
-    except Exception as exc:  # noqa: BLE001 - intentionally broad: any failure degrades, doesn't crash the gate
-        print(
-            f"[analyze] WARNING: duplicates check degraded to 0 — image bytes unreachable "
-            f"in this run ({exc.__class__.__name__}: {exc}).",
-            file=sys.stderr,
+    engine = get_db_engine()
+    with engine.connect() as conn, tempfile.TemporaryDirectory() as tmp_dir:
+        rows = (
+            conn.execute(
+                text("SELECT id, storage_key FROM images WHERE id IN :ids"),
+                {"ids": tuple(image_ids)},
+            ).fetchall()
+            if image_ids
+            else []
         )
-        return []
+        if len(rows) != len(image_ids):
+            missing = sorted(set(image_ids) - {row[0] for row in rows})
+            raise DuplicateBytesUnavailableError(
+                f"images table is missing {len(missing)} of {len(image_ids)} referenced "
+                f"image ids (e.g. {missing[:5]}) — duplicates cannot be measured for real "
+                "against this DB."
+            )
+
+        store = ObjectStore.from_settings()
+        references = []
+        for image_id, storage_key in rows:
+            local_path = Path(tmp_dir) / f"{image_id}"
+            local_path.write_bytes(store.get_bytes(storage_key))
+            references.append(ImageReference(image_id=image_id, path=local_path))
+
+        result = find_near_duplicate_images(references)
+        return [(pair.image_id_a, pair.image_id_b) for pair in result.pairs]
 
 
 def main() -> None:
