@@ -125,3 +125,24 @@ También corre contenedorizado junto al resto del stack. Está detrás de un pro
 ```bash
 docker compose --profile pipeline run --rm pipeline <comando>
 ```
+
+### DVC (OPS-04)
+
+El pipeline reproducible vive en `pipeline/dvc.yaml`: `ingest → validate → analyze → quality_gate → split → release`. Parámetros (categorías objetivo, umbrales de analizadores, proporciones de split) en `pipeline/params.yaml`; el dataset crudo (`pipeline/data/raw/coco-dataset.json`) nunca se versiona en git — solo su puntero `.dvc` — y se sincroniza contra MinIO (DEV) como remote de DVC.
+
+**Instalar DVC por separado**, no como parte de `requirements-dev.txt`: `dvc[s3]` trae `aiobotocore`, que exige un rango de `botocore` incompatible con el `boto3` ya fijado del pipeline — mezclarlos en el mismo lockfile rompe la resolución. Instálalo aislado (`pipx install "dvc[s3]"` es lo más simple) o en un entorno Python separado.
+
+**El remote DEV usa el hostname de Compose** (`http://minio:9000` en `.dvc/config`, ya versionado), así que `dvc repro`/`push`/`pull` necesitan correr donde ese hostname resuelva — dentro del profile `pipeline` de Compose, o en un contenedor conectado a la misma red (`docker network connect` / `--network proyecto-02-dataset-quality_default`). Las credenciales (`minioadmin`/`minioadmin` en dev) van en `.dvc/config.local`, que está en `.gitignore` — nunca en el `.dvc/config` versionado.
+
+```bash
+cd pipeline
+dvc remote modify --local dev access_key_id minioadmin
+dvc remote modify --local dev secret_access_key minioadmin
+PYTHONPATH=src dvc repro
+dvc push -r dev
+dvc pull -r dev
+```
+
+`dvc repro` corrido dos veces no debe rehacer ninguna etapa; tocar `params.yaml` o `quality.yaml` solo debe rehacer las etapas realmente afectadas (`dvc dag` muestra el grafo completo).
+
+**Limitación conocida:** la verificación de `duplicates` (pHash) necesita descargar las imágenes reales desde el object store — el export COCO solo trae el nombre de archivo, no el `storage_key` de MinIO, así que la etapa `analyze` lo resuelve consultando la tabla `images` de MariaDB por `id` (los IDs de COCO son los mismos IDs de la BD). Si esa BD/objeto no está disponible en el entorno donde corre `dvc repro` (por ejemplo, corriendo contra un dataset anotado en otra instancia), la métrica degrada a `0` con un warning explícito en la salida — nunca se presenta como una medición limpia sin serlo.
