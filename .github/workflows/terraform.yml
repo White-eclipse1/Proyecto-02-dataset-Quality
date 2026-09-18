@@ -29,7 +29,13 @@ jobs:
 
       - name: No static AWS credentials
         run: |
-          if grep -rnE "AKIA|aws_secret_access_key|aws-access-key-id" --include='*.tf' --include='*.yml' --include='*.yaml' .; then
+          # --exclude keeps this check's own source line (which necessarily
+          # contains these strings as its search pattern) from matching
+          # itself — a real leaked key in any other .tf/.yml/.yaml file
+          # still fails this step.
+          if grep -rnE "AKIA|aws_secret_access_key|aws-access-key-id" \
+               --include='*.tf' --include='*.yml' --include='*.yaml' \
+               --exclude='terraform.yml' .; then
             echo "Found a static AWS credential pattern above — this must use OIDC instead." >&2
             exit 1
           fi
