@@ -20,6 +20,7 @@ module "network" {
 
   environment = "dev"
   vpc_cidr    = var.vpc_cidr
+  aws_region  = var.aws_region
 
   tags = {
     Environment = "dev"
@@ -52,16 +53,29 @@ module "data" {
   }
 }
 
-# Placeholder only, to keep this module genuinely validated end-to-end.
-# OPS-08 replaces this with the real dvc-cache / dataset-releases buckets.
-module "storage_example" {
+# Structural parity with prod (OPS-08) — validate-only here. DEV's actual
+# object storage is MinIO (see pipeline/.dvc/config), not S3; these never
+# get applied in this environment.
+module "dvc_cache" {
   source = "../../modules/storage"
 
-  bucket_name       = "dataset-quality-dev-placeholder-${data.aws_caller_identity.current.account_id}"
-  enable_versioning = false
+  bucket_name        = "dvc-cache-${data.aws_caller_identity.current.account_id}"
+  enable_versioning  = true
+  enable_object_lock = false
 
   tags = {
     Environment = "dev"
-    Purpose     = "placeholder-do-not-use"
+  }
+}
+
+module "dataset_releases" {
+  source = "../../modules/storage"
+
+  bucket_name        = "dataset-releases-${data.aws_caller_identity.current.account_id}"
+  enable_versioning  = true
+  enable_object_lock = true
+
+  tags = {
+    Environment = "dev"
   }
 }
