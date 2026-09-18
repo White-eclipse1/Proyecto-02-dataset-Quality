@@ -7,6 +7,8 @@ stages:
     deps:
       - data/raw/coco-dataset.json
       - src/dataset_quality/ingestion/__main__.py
+      - src/dataset_quality/ingestion/models.py
+      - src/dataset_quality/analyzers/m3.py
     outs:
       - data/interim/coco.json
 
@@ -20,6 +22,7 @@ stages:
     deps:
       - data/interim/coco.json
       - src/dataset_quality/analyzers/m3.py
+      - src/dataset_quality/ingestion/models.py
     params:
       - m3.target_categories
     outs:
@@ -43,6 +46,11 @@ stages:
       - src/dataset_quality/analyzers/dq04.py
       - src/dataset_quality/analyzers/dq05.py
       - src/dataset_quality/analyzers/dq06.py
+      - src/dataset_quality/analyzers/m3.py
+      - src/dataset_quality/ingestion/models.py
+      - src/dataset_quality/config/clients.py
+      - src/dataset_quality/config/settings.py
+      - src/dataset_quality/storage/object_store.py
     params:
       - analyze.small_object_max_width
       - analyze.small_object_max_height
@@ -63,6 +71,9 @@ stages:
       - data/interim/observations.json
       - quality.yaml
       - src/dataset_quality/quality_gate/runner.py
+      - src/dataset_quality/quality_gate/models.py
+      - src/dataset_quality/quality_gate/policy.py
+      - src/dataset_quality/ingestion/models.py
     params:
       - dataset_version
     outs:
@@ -87,6 +98,11 @@ stages:
       - data/interim/duplicate_pairs.json
       - src/dataset_quality/splits/__main__.py
       - src/dataset_quality/splits/generator.py
+      - src/dataset_quality/splits/models.py
+      - src/dataset_quality/analyzers/m3.py
+      - src/dataset_quality/ingestion/models.py
+      - src/dataset_quality/config/models.py
+      - src/dataset_quality/quality_gate/models.py
     params:
       - dataset_version
       - split.train
@@ -109,6 +125,10 @@ stages:
       - data/interim/quality.json
       - data/interim/splits.json
       - src/dataset_quality/versioning/__main__.py
+      - src/dataset_quality/analyzers/m3.py
+      - src/dataset_quality/ingestion/models.py
+      - src/dataset_quality/copilot/contracts.py
+      - src/dataset_quality/quality_gate/models.py
     params:
       - dataset_version
     outs:
