@@ -113,8 +113,7 @@ def generate_splits(
     reproducibility_check = SplitReproducibilityCheck(
         status="pass" if reproducible else "fail",
         note=(
-            f"Two runs with seed={config.seed} produced identical image_id assignments "
-            "per split."
+            f"Two runs with seed={config.seed} produced identical image_id assignments per split."
             if reproducible
             else f"Two runs with seed={config.seed} produced DIFFERENT image_id "
             "assignments — split generation is not reproducible."
@@ -380,7 +379,8 @@ def _fill_class_coverage_gaps(
         passes += 1
         for required_split in ("val", "test"):
             missing = [
-                category_id for category_id in all_category_ids
+                category_id
+                for category_id in all_category_ids
                 if category_id not in present(required_split)
             ]
             for category_id in missing:

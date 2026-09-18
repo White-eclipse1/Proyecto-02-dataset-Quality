@@ -114,9 +114,7 @@ class AnthropicProvider:
         return ProviderTurn(final_answer=text)
 
 
-def _build_anthropic_messages(
-    question: str, history: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
+def _build_anthropic_messages(question: str, history: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Replay ``history`` (generic tool-call log) as an Anthropic message list.
 
     Rebuilt from scratch each call instead of kept as provider state, so
