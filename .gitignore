@@ -37,6 +37,13 @@ crash.log
 crash.*.log
 override.tf
 override.tf.json
+
+# terraform plan/show output — can echo real resource attribute values,
+# never a build artifact worth versioning.
+*.tfplan
+tfplan
+tfplan_*
+plan.json
 *_override.tf
 *_override.tf.json
 *.tfvars
