@@ -5,15 +5,25 @@ import { ApiError, extractMessageField, jsonBody } from "./client";
  * El Copilot es un servicio Python aparte (`copilot`, docker-compose.yml),
  * no una ruta del backend Node -- por eso tiene su propia base URL en vez de
  * usar `apiRequest`/`API_BASE_URL` (que apuntan al backend). En Docker,
- * nginx reenvía `/copilot/` a ese servicio (ver frontend/docker/nginx.conf);
- * fuera de Docker (`npm run dev`), vite.config.ts hace lo mismo.
+ * nginx reenvía `/copilot-api/` a ese servicio (ver
+ * frontend/docker/nginx.conf); fuera de Docker (`npm run dev`),
+ * vite.config.ts hace lo mismo.
+ *
+ * Corrección de revisión (validación en vivo, APP-10): NO puede ser
+ * `/copilot` -- esa es también la ruta de esta misma pantalla en React
+ * Router. Visitar la página directo (sin `/query`) hacía que nginx
+ * interceptara la petición con su propio redirect de "falta la barra
+ * final" antes de que le tocara a la SPA, y ese redirect de nginx pierde el
+ * puerto (`localhost:8080` -> `localhost`), rompiendo la carga de la
+ * página con un "Unable to connect" sin pista de la causa real. Ver el
+ * comentario en nginx.conf.
  */
 const configuredBaseUrl = import.meta.env.VITE_COPILOT_BASE_URL as string | undefined;
 
 export const COPILOT_BASE_URL: string =
   configuredBaseUrl !== undefined && configuredBaseUrl.trim() !== ""
     ? configuredBaseUrl
-    : "/copilot";
+    : "/copilot-api";
 
 /**
  * Le hace una pregunta real al Dataset Copilot (POST /query) y valida la

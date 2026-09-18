@@ -13,7 +13,8 @@ type Message =
  * Copilot: chat real contra el agente de solo lectura (APP-06,
  * pipeline/src/dataset_quality/copilot/). Cablea esta pantalla contra el
  * servicio HTTP `copilot` (nuevo en APP-10, http_app.py) — cada pregunta
- * viaja por POST /copilot/query y la respuesta viene del mismo
+ * viaja por POST /copilot-api/query (ver lib/api/copilot.ts sobre por qué
+ * no /copilot, que es la ruta de esta misma pantalla) y la respuesta viene del mismo
  * `answer_question` que usa el servidor MCP real (agent.py: "no separate
  * code path"), así que nunca inventa números: cada respuesta trae las
  * tool calls que la fundamentan (`tools_used`) y la versión del dataset

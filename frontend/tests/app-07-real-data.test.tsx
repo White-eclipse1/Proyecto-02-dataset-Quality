@@ -24,7 +24,7 @@ import { VersionsPage } from "../src/pages/dataset/Versions";
  *
  * Copilot (APP-10) ya no entra en el describe.each de arriba: a diferencia
  * de las otras cinco pantallas, deja de hacer fetch al montar -- ahora es un
- * chat real que solo llama a POST /copilot/query cuando el usuario manda una
+ * chat real que solo llama a POST /copilot-api/query cuando el usuario manda una
  * pregunta (ver Copilot.tsx y lib/api/copilot.ts). Sus propios tests están
  * más abajo, junto a los de Settings.
  */
@@ -240,16 +240,21 @@ describe("Settings persiste contra /quality-policy (APP-07)", () => {
   });
 });
 
-describe("Copilot chat real contra POST /copilot/query (APP-10)", () => {
+describe("Copilot chat real contra POST /copilot-api/query (APP-10)", () => {
   async function askQuestion(question: string) {
     const textbox = screen.getByLabelText(/pregunta para el copilot/i);
     fireEvent.change(textbox, { target: { value: question } });
     fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
   }
 
-  it("manda la pregunta a POST /copilot/query y muestra la respuesta con su versión de dataset y tools_used", async () => {
+  it("manda la pregunta a POST /copilot-api/query y muestra la respuesta con su versión de dataset y tools_used", async () => {
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-      expect(url).toContain("/copilot/query");
+      // /copilot-api, no /copilot: ese prefijo colisionaría con la ruta de
+      // esta misma pantalla en React Router -- ver el comentario en
+      // lib/api/copilot.ts y frontend/docker/nginx.conf (bug real que
+      // encontramos probando en vivo: nginx interceptaba /copilot antes de
+      // que le tocara a la SPA, y su redirect automático perdía el puerto).
+      expect(url).toContain("/copilot-api/query");
       expect(init?.method).toBe("POST");
       return Promise.resolve({
         ok: true,

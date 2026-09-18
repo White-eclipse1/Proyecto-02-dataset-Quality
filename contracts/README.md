@@ -324,7 +324,7 @@ Dos cambios:
   up` normal. `frontend/src/pages/dataset/Copilot.tsx` se reescribió por
   completo — de un placeholder estático a un chat real
   (`frontend/src/lib/api/copilot.ts::askCopilot`, proxiado por nginx en
-  `/copilot/` → `copilot:8100`, o por Vite en dev) que manda cada pregunta,
+  `/copilot-api/` → `copilot:8100`, o por Vite en dev) que manda cada pregunta,
   muestra la respuesta, y renderiza `dataset_version` y `tools_used` como
   insignias junto a cada respuesta — cumpliendo directamente los incisos
   (b)/(c) de la Sección 8 del rubro. Un fallo del provider (sin
@@ -346,6 +346,36 @@ Dos cambios:
   rubro ("si cambia un valor en la fuente, la respuesta debe cambiar") no
   se podía cumplir para el Copilot aunque el chat ya funcionara: el agente
   seguiría leyendo el mock estático, nunca `dvc repro`.
+
+### Corrección de revisión (validación en vivo del Agent Test, APP-10)
+
+Validando el smoke test completo en una máquina con Docker (mismo patrón
+que `APP-09`), entrar directo a `http://localhost:8080/copilot` en el
+navegador tronaba con "Unable to connect", perdiendo el puerto (terminaba
+en `http://localhost/copilot/`) — parecía un problema del navegador o de
+una extensión/VPN, pero se reprodujo igual desde PowerShell
+(`Invoke-WebRequest`, sin navegador de por medio) y en una ventana privada
+sin historial, descartando ambas causas. Los logs de `docker compose logs
+frontend` mostraron la causa real: `nginx.conf` tenía el proxy del Copilot
+en `location /copilot/` — el mismo prefijo que ya usa esta pantalla como
+ruta de React Router. Visitar `/copilot` (sin `/query`) activaba el
+redirect automático de nginx para agregar la barra final
+(`/copilot` → `/copilot/`), y ese redirect usa la variable `$host` de
+nginx, que por diseño **siempre** quita el puerto — el navegador terminaba
+en `http://localhost/copilot/` (puerto 80, nada escuchando ahí) en vez de
+`:8080`. En uso normal de la app nunca se nota (`askCopilot` siempre pide
+`/copilot/query`, nunca la ruta pelona), pero cualquiera que entrara
+directo a la URL de la pantalla — exactamente lo que pide el Agent Test —
+se topaba con esto.
+
+Fix: renombrar el proxy a `location /copilot-api/` (`nginx.conf`) y
+`/copilot-api` en el proxy de Vite (`vite.config.ts`) y en
+`COPILOT_BASE_URL` (`lib/api/copilot.ts`), eliminando la colisión de raíz
+en vez de intentar evitar el redirect de nginx. Pendiente de confirmar con
+un rebuild (`docker compose up --build`) en la misma máquina que
+`http://localhost:8080/copilot` ya carga la SPA (no el proxy) y que una
+pregunta real de punta a punta sigue respondiendo con
+`dataset_version`/`tools_used` citados.
 
 `ANTHROPIC_API_KEY` / `COPILOT_MODEL` se agregaron a `.env.example` /
 `.env.production.example` (raíz del repo, los que lee `docker compose up`
