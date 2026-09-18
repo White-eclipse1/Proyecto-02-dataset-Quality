@@ -1,18 +1,22 @@
 import { Bot } from "lucide-react";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { useContractFetch } from "@/hooks/useContractFetch";
+import { useValidatedFetch } from "@/hooks/useValidatedFetch";
 import { qualityReportSchema } from "@/lib/contracts/schemas";
 
 /**
  * Copilot: placeholder de ruta para APP-02 (scaffold). El servidor MCP y el
- * agente de solo lectura son APP-06/APP-07 — todavía no existen. Esta
- * pantalla sí lee un contrato real (quality.json) para no ser una ruta
- * vacía/estática, y deja claro qué falta y por qué, en vez de simular un
- * chat que no funciona.
+ * agente de solo lectura (APP-06) ya existen del lado de la pipeline
+ * Python — lo que falta es cablear un chat de verdad en esta pantalla
+ * contra ese agente, que sigue fuera del alcance de APP-07 (su Acceptance
+ * Criteria es reemplazar los mocks de datos por las salidas reales de la
+ * pipeline, no construir la UI de chat). Mientras tanto, esta pantalla lee
+ * GET /quality-report (backend, SPEC-PIPE-001/APP-07) igual que Overview,
+ * para no ser una ruta vacía/estática, y deja claro qué falta y por qué en
+ * vez de simular un chat que no funciona.
  */
 export function CopilotPage() {
-  const report = useContractFetch("/contracts/quality.json", qualityReportSchema);
+  const report = useValidatedFetch("/quality-report", qualityReportSchema);
 
   return (
     <main className="flex-1 px-6 py-6 lg:px-10 lg:py-8">
@@ -40,13 +44,14 @@ export function CopilotPage() {
               <Bot className="h-5 w-5" aria-hidden />
             </div>
             <p className="mt-3 text-sm font-medium text-ink">
-              El servidor MCP y el agente todavía no están conectados.
+              El chat con el Dataset Copilot todavía no está cableado en esta pantalla.
             </p>
             <p className="mx-auto mt-1 max-w-md text-sm text-ink-muted">
-              Esta pantalla ya puede leer el contrato de calidad (versión{" "}
+              Esta pantalla ya lee el reporte de calidad real de la pipeline (versión{" "}
               <span className="font-medium text-ink">{report.data.dataset_version}</span>, estado{" "}
               <span className="font-medium text-ink">{report.data.overall_status}</span>
-              ), pero el chat en sí se implementa en APP-06 (servidor MCP) y APP-07 (agente).
+              ), pero conectar la UI de chat contra el servidor MCP y el agente de APP-06 sigue
+              siendo un ticket aparte.
             </p>
           </div>
         )}

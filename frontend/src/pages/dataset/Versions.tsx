@@ -1,16 +1,18 @@
 import { QualityStatusBadge } from "@/components/dataset/QualityStatusBadge";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { useContractFetch } from "@/hooks/useContractFetch";
+import { useValidatedFetch } from "@/hooks/useValidatedFetch";
 import { type DatasetVersion, versionsReportSchema } from "@/lib/contracts/schemas";
 
 /**
  * Versions: línea de tiempo de versiones semánticas, diff entre versión
  * actual y anterior, y estado DEV/PROD por versión — leído de
- * contracts/versions.json.
+ * GET /version-history (backend, SPEC-PIPE-001/APP-07), ya no del mock
+ * estático de contracts/versions.json (ver contracts/README.md,
+ * "Reconciliación con APP-07").
  */
 export function VersionsPage() {
-  const report = useContractFetch("/contracts/versions.json", versionsReportSchema);
+  const report = useValidatedFetch("/version-history", versionsReportSchema);
 
   return (
     <main className="flex-1 px-6 py-6 lg:px-10 lg:py-8">

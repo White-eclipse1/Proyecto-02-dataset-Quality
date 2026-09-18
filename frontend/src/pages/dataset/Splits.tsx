@@ -1,7 +1,7 @@
 import { QualityStatusBadge } from "@/components/dataset/QualityStatusBadge";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { useContractFetch } from "@/hooks/useContractFetch";
+import { useValidatedFetch } from "@/hooks/useValidatedFetch";
 import { splitsReportSchema } from "@/lib/contracts/schemas";
 
 const SPLIT_LABELS = { train: "Train", val: "Val", test: "Test" } as const;
@@ -10,12 +10,14 @@ const SPLIT_KEYS = Object.keys(SPLIT_LABELS) as SplitKey[];
 
 /**
  * Splits: distribución de clases por partición y resultado del leakage
- * check, leído de contracts/splits.json. La reproducibilidad (mismo seed
- * -> mismos IDs) se prueba corriendo el pipeline dos veces, no desde aquí
- * — este contrato solo expone el resultado ya calculado.
+ * check, leído de GET /split-report (backend, SPEC-PIPE-001/APP-07) — ya no
+ * del mock estático de contracts/splits.json (ver contracts/README.md,
+ * "Reconciliación con APP-07"). La reproducibilidad (mismo seed -> mismos
+ * IDs) se prueba corriendo el pipeline dos veces, no desde aquí — este
+ * contrato solo expone el resultado ya calculado.
  */
 export function SplitsPage() {
-  const report = useContractFetch("/contracts/splits.json", splitsReportSchema);
+  const report = useValidatedFetch("/split-report", splitsReportSchema);
 
   return (
     <main className="flex-1 px-6 py-6 lg:px-10 lg:py-8">

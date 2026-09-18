@@ -3,12 +3,14 @@ import { QualityStatusBadge } from "@/components/dataset/QualityStatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { useContractFetch } from "@/hooks/useContractFetch";
+import { useValidatedFetch } from "@/hooks/useValidatedFetch";
 import { type QualityCheck, qualityReportSchema } from "@/lib/contracts/schemas";
 
 /**
  * Analyzers: un tab por analizador de calidad (Tier 2 del pipeline), leído
- * de contracts/quality.json. Solo se listan los checks que representan
+ * de GET /quality-report (backend, SPEC-PIPE-001/APP-07) — ya no del mock
+ * estático de contracts/quality.json (ver contracts/README.md,
+ * "Reconciliación con APP-07"). Solo se listan los checks que representan
  * analizadores propiamente (se excluye min_images_per_class, que es la
  * política de la quality gate, no un analizador — ver Splits/Overview).
  *
@@ -39,7 +41,7 @@ const ANALYZER_LABELS: Record<(typeof ANALYZER_IDS)[number], string> = {
 };
 
 export function AnalyzersPage() {
-  const report = useContractFetch("/contracts/quality.json", qualityReportSchema);
+  const report = useValidatedFetch("/quality-report", qualityReportSchema);
   const [activeId, setActiveId] = useState<string>(ANALYZER_IDS[0]);
 
   return (
