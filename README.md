@@ -89,12 +89,35 @@ Setup local:
 ```bash
 cd pipeline
 cp .env.example .env
+python -m venv .venv && source .venv/bin/activate   # Windows: ver nota abajo
 pip install -r requirements.txt -r requirements-dev.txt
 ruff check .
 pytest
 ```
 
 Las dependencias se editan en `requirements.in` / `requirements-dev.in` y se recompilan con `pip-compile --generate-hashes` hacia `requirements.txt` / `requirements-dev.txt`. Nunca se editan a mano los `.txt` compilados — si se hace, se pierde el hash-locking.
+
+**Windows (PowerShell):** el proyecto está fijado a Python 3.12
+(`pyproject.toml`), y si tienes varias versiones instaladas `python` puede
+no apuntar a esa. Usa el launcher para elegirla explícitamente:
+
+```powershell
+py -0                         # lista las versiones instaladas
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt -r requirements-dev.txt
+```
+
+Si el `pip install` truena con `In --require-hashes mode, all requirements
+must have their versions pinned` sobre `colorama`, es porque
+`requirements-dev.txt` se compiló en Linux/Mac y `colorama` (dependencia
+de `pytest` solo en Windows, vía `sys_platform == "win32"`) nunca quedó
+fijada ahí con hash. Instálala aparte antes y pip la salta en el resto:
+
+```powershell
+pip install colorama
+pip install -r requirements.txt -r requirements-dev.txt
+```
 
 También corre contenedorizado junto al resto del stack. Está detrás de un profile de Docker Compose (`pipeline`) porque hoy es solo tooling de CLI/batch — sin servidor HTTP — así que `docker compose up` sigue levantando únicamente app + MariaDB + MinIO:
 
