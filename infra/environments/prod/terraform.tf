@@ -12,10 +12,18 @@ terraform {
     }
   }
 
-  # Remote backend (S3 + DynamoDB locking) is OPS-08's job — local state for now.
-  # In a real rollout, prod is its own separate AWS account (hence its own
-  # github-oidc provider/role below, not a duplicate of dev's) — the state
-  # for this environment lives in that account's backend once configured.
+  # Same bootstrap bucket/table as dev for now (single AWS account in this
+  # project) — a real multi-account rollout would point this at prod's own
+  # account's backend instead. Different `key` keeps the two state files
+  # separate regardless. See dev/terraform.tf for why this can't use a
+  # variable/data source.
+  backend "s3" {
+    bucket         = "dataset-quality-tfstate-685538571046"
+    key            = "prod/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "dataset-quality-tflock"
+    encrypt        = true
+  }
 }
 
 provider "aws" {

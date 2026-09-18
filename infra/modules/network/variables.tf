@@ -3,6 +3,11 @@ variable "environment" {
   type        = string
 }
 
+variable "aws_region" {
+  description = "Region this network lives in — needed for the S3 Gateway Endpoint's service name."
+  type        = string
+}
+
 variable "vpc_cidr" {
   description = "CIDR block for the VPC."
   type        = string

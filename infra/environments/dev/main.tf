@@ -20,6 +20,7 @@ module "network" {
 
   environment = "dev"
   vpc_cidr    = var.vpc_cidr
+  aws_region  = var.aws_region
 
   tags = {
     Environment = "dev"
@@ -52,16 +53,32 @@ module "data" {
   }
 }
 
-# Placeholder only, to keep this module genuinely validated end-to-end.
-# OPS-08 replaces this with the real dvc-cache / dataset-releases buckets.
-module "storage_example" {
+# Applied for real (see infra/README.md). DEV's actual DVC remote is still
+# MinIO (see pipeline/.dvc/config) — wiring DVC itself to this bucket is
+# OPS-07's job, not this ticket's. `dev`/`prod` currently share one AWS
+# account, so the environment must be part of the bucket name — otherwise
+# both environments compute the same global S3 name and the second `apply`
+# collides with the first (caught in OPS-08 PR review).
+module "dvc_cache" {
   source = "../../modules/storage"
 
-  bucket_name       = "dataset-quality-dev-placeholder-${data.aws_caller_identity.current.account_id}"
-  enable_versioning = false
+  bucket_name        = "dvc-cache-dev-${data.aws_caller_identity.current.account_id}"
+  enable_versioning  = true
+  enable_object_lock = false
 
   tags = {
     Environment = "dev"
-    Purpose     = "placeholder-do-not-use"
+  }
+}
+
+module "dataset_releases" {
+  source = "../../modules/storage"
+
+  bucket_name        = "dataset-releases-dev-${data.aws_caller_identity.current.account_id}"
+  enable_versioning  = true
+  enable_object_lock = true
+
+  tags = {
+    Environment = "dev"
   }
 }

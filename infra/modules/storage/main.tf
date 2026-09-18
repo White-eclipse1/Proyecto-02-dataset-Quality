@@ -6,14 +6,33 @@
 resource "aws_s3_bucket" "this" {
   bucket = var.bucket_name
 
+  # Object Lock can only be turned on at creation time, never retrofitted —
+  # has to live on this resource regardless of whether enable_object_lock
+  # is actually true for a given caller.
+  object_lock_enabled = var.enable_object_lock
+
   tags = var.tags
 }
 
 resource "aws_s3_bucket_versioning" "this" {
   bucket = aws_s3_bucket.this.id
 
+  # Object Lock requires versioning — force it on even if a caller forgot,
+  # rather than letting AWS reject the apply with an unclear error.
   versioning_configuration {
-    status = var.enable_versioning ? "Enabled" : "Suspended"
+    status = var.enable_versioning || var.enable_object_lock ? "Enabled" : "Suspended"
+  }
+}
+
+resource "aws_s3_bucket_object_lock_configuration" "this" {
+  count  = var.enable_object_lock ? 1 : 0
+  bucket = aws_s3_bucket.this.id
+
+  rule {
+    default_retention {
+      mode = "COMPLIANCE"
+      days = var.object_lock_retention_days
+    }
   }
 }
 

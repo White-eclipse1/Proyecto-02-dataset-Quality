@@ -12,7 +12,18 @@ terraform {
     }
   }
 
-  # Remote backend (S3 + DynamoDB locking) is OPS-08's job — local state for now.
+  # Backend blocks can't use variables/data sources — must be static
+  # literals — so the account ID is hardcoded here directly. Not a secret,
+  # just a config value, same as bucket names elsewhere in this repo.
+  # Created by infra/bootstrap/ (see infra/README.md for the one-time
+  # `terraform init -migrate-state` step).
+  backend "s3" {
+    bucket         = "dataset-quality-tfstate-685538571046"
+    key            = "dev/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "dataset-quality-tflock"
+    encrypt        = true
+  }
 }
 
 provider "aws" {

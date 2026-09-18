@@ -1,8 +1,10 @@
 data "aws_caller_identity" "current" {}
 
 # Everything in this environment is validate-only for now — no real PROD
-# AWS account/apply exists yet. Diego's real apply so far is dev's
-# github-oidc module only (see infra/README.md).
+# apply exists yet. `dev`'s environment is fully applied for real (see
+# infra/README.md); prod assumes its own separate AWS account eventually,
+# but for now shares dev's single account, hence the bucket names below
+# being environment-qualified.
 
 module "github_oidc" {
   source = "../../modules/github-oidc"
@@ -20,6 +22,7 @@ module "network" {
 
   environment = "prod"
   vpc_cidr    = var.vpc_cidr
+  aws_region  = var.aws_region
 
   tags = {
     Environment = "prod"
@@ -52,16 +55,37 @@ module "data" {
   }
 }
 
-# Placeholder only, to keep this module genuinely validated end-to-end.
-# OPS-08 replaces this with the real dvc-cache / dataset-releases buckets.
-module "storage_example" {
+# dvc-cache: DVC's own content-addressed cache. Versioned (protects against
+# accidental overwrites) but NOT Object Lock — dvc gc needs to be able to
+# delete orphaned cache objects, which Object Lock would block.
+#
+# `dev`/`prod` currently share one AWS account, so the environment must be
+# part of the bucket name — otherwise both environments compute the same
+# global S3 name and the second `apply` collides with the first (caught in
+# OPS-08 PR review).
+module "dvc_cache" {
   source = "../../modules/storage"
 
-  bucket_name       = "dataset-quality-prod-placeholder-${data.aws_caller_identity.current.account_id}"
-  enable_versioning = true
+  bucket_name        = "dvc-cache-prod-${data.aws_caller_identity.current.account_id}"
+  enable_versioning  = true
+  enable_object_lock = false
 
   tags = {
     Environment = "prod"
-    Purpose     = "placeholder-do-not-use"
+  }
+}
+
+# dataset-releases: finalized, published dataset versions. These should
+# never be silently altered or deleted, so Object Lock (WORM) is appropriate
+# here in a way it isn't for dvc-cache above.
+module "dataset_releases" {
+  source = "../../modules/storage"
+
+  bucket_name        = "dataset-releases-prod-${data.aws_caller_identity.current.account_id}"
+  enable_versioning  = true
+  enable_object_lock = true
+
+  tags = {
+    Environment = "prod"
   }
 }
