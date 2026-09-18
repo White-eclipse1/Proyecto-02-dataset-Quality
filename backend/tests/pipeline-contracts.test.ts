@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { env } from '../src/config/env.js';
 import { NotFoundError } from '../src/logic/errors.js';
 import {
   getQualityReport,
@@ -62,5 +63,25 @@ describe('SPEC-PIPE-001 - lectura de contratos', () => {
 
     await writeFile(filePath, JSON.stringify({ overall_status: 'pass' }), 'utf-8');
     await expect(getQualityReport(dir)).resolves.toMatchObject({ overall_status: 'pass' });
+  });
+});
+
+describe('SPEC-PIPE-001 - PIPELINE_OUTPUT_DIR apunta a la salida real de la pipeline', () => {
+  it('el default resuelve a pipeline/data/interim, no a contracts/ (el mock versionado)', () => {
+    // Corrección de revisión (Mau, PR de APP-07): pipeline/dvc.yaml escribe
+    // quality.json/splits.json/versions.json en pipeline/data/interim/ (ver
+    // los stages quality_gate/split/release, campo `outs`) -- nunca en
+    // contracts/, que sigue siendo el mock versionado de APP-01/APP-05 y que
+    // ningún stage de la pipeline real toca. Antes de esta corrección,
+    // env.CONTRACTS_DIR apuntaba por defecto a `../contracts`: correr
+    // `dvc repro` nunca cambiaba lo que la Web App mostraba, sin importar
+    // cuántas veces se corriera (el Agent Test de APP-07 fallaba en la
+    // práctica). Si esto vuelve a apuntar a contracts/, este test lo
+    // atrapa.
+    const resolved = path.resolve(process.cwd(), env.PIPELINE_OUTPUT_DIR);
+    const expectedSuffix = path.join('pipeline', 'data', 'interim');
+
+    expect(resolved.endsWith(expectedSuffix)).toBe(true);
+    expect(path.basename(resolved)).not.toBe('contracts');
   });
 });
