@@ -311,6 +311,22 @@ class _EchoingProvider:
 def test_copilot_grounded_answer_reflects_source_data_changes_between_two_questions(
     tmp_path: Path,
 ) -> None:
+    """Review note (APP-08 PR #44, @Mau): this drives `answer_question` twice,
+    each call building its own internal tool-call history from scratch --
+    that is correct, not an oversight. Nothing in this codebase threads a
+    conversation/session object across separate questions: `answer_question`
+    takes no `history` parameter from its caller (see `agent.py`), and
+    `AnthropicProvider._build_anthropic_messages` rebuilds its message list
+    "from scratch each call instead of kept as provider state" by its own
+    docstring. So asking the same question again, the way a real chat UI
+    would call `answer_question` once per user turn, IS two independent
+    calls. What must carry over between them -- and what this test actually
+    proves -- is that the on-disk contract data, not any in-memory
+    conversation state, is what the second answer is grounded in: same
+    `server`/`ContractStore` instance, no re-instantiation, only the
+    `quality.json` file underneath it changes.
+    """
+
     _write_quality_json(tmp_path, blocked=True)
     _write_minimal_splits_and_versions(tmp_path)
     server = build_server(tmp_path)
@@ -352,9 +368,41 @@ def test_copilot_grounded_answer_reflects_source_data_changes_between_two_questi
     assert "no está bloqueado" in second.answer
 
 
-def test_copilot_dataset_version_is_present_whenever_a_tool_backed_answer_is_given(
-    tmp_path: Path,
+class _SingleToolProvider:
+    """Calls exactly one named tool, then answers -- lets the dataset_version
+    test below drive each of the four tools individually instead of only the
+    one (`get_release_blockers`) that `_EchoingProvider` happens to call.
+    """
+
+    def __init__(self, tool_name: str) -> None:
+        self._tool_name = tool_name
+
+    def next_turn(
+        self, *, question: str, tool_specs: list[dict], history: list[dict]
+    ) -> ProviderTurn:
+        if not history:
+            return ProviderTurn(tool_calls=[ToolCall(name=self._tool_name)])
+        return ProviderTurn(final_answer="ok")
+
+
+@pytest.mark.parametrize(
+    "tool_name",
+    ["get_quality_report", "get_split_report", "get_version_history", "get_release_blockers"],
+)
+def test_copilot_dataset_version_is_present_for_every_tool_not_just_release_blockers(
+    tool_name: str, tmp_path: Path
 ) -> None:
+    """Review fix (APP-08 PR #44, @Mau): the original version of this test only
+    ever drove `get_release_blockers`, whose handler happens to build a dict
+    with an explicit `dataset_version` key. `get_version_history` doesn't --
+    its payload is `VersionsReport.model_dump()`, which only has
+    `current_version` at the top level -- so `answer_question`'s
+    `payload.get("dataset_version")` silently returned `None` for that tool
+    even though a tool genuinely was used and the report clearly names a
+    dataset version. Parametrizing over all four tools makes that the kind of
+    gap this test can no longer hide.
+    """
+
     _write_quality_json(tmp_path, blocked=True)
     _write_minimal_splits_and_versions(tmp_path)
     server = build_server(tmp_path)
@@ -364,11 +412,12 @@ def test_copilot_dataset_version_is_present_whenever_a_tool_backed_answer_is_giv
         answer_question(
             "¿Cuál es el estado del release?",
             server=server,
-            provider=_EchoingProvider(),
+            provider=_SingleToolProvider(tool_name),
             tool_specs=specs,
         )
     )
 
-    assert result.tools_used, "expected the provider to have used at least one tool"
-    assert result.dataset_version is not None
-    assert result.dataset_version == "v-test-1"
+    assert result.tools_used == [tool_name]
+    assert result.dataset_version == "v-test-1", (
+        f"{tool_name} was used but dataset_version was not extracted from its result"
+    )
