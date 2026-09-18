@@ -52,9 +52,15 @@ def generate_splits(
     - Grouped: image ids linked by ``duplicate_pairs`` (near-duplicates, e.g.
       DQ-05's pHash output, once available) are always kept together in a
       single split, so cross-split leakage is impossible by construction.
+    - Stratified: groups are assigned by their scarcest carried class's
+      remaining deficit against the configured train/val/test ratios, not
+      just by overall image count — so a minority class's own split
+      proportions track the configured ratios too, the same as the totals do.
     - Covered: every category present in ``dataset`` is guaranteed to appear
-      in both the validation and test splits, donating the smallest eligible
-      group (preferring train) when the first pass misses one.
+      in both the validation and test splits whenever that's possible without
+      un-covering a class a split already has — donating the smallest
+      eligible group, preferring train, when the first pass misses one. See
+      ``_fill_class_coverage_gaps`` for exactly what "possible" means here.
 
     Raises ``ValueError`` if a duplicate pair references an image id that is
     not part of ``dataset``.
@@ -172,39 +178,104 @@ def _assign_with_full_class_coverage(
     image_categories: dict[int, set[int]],
     dataset: CocoDataset,
 ) -> tuple[dict[str, list[int]], dict[int, str]]:
-    assignment, group_split = _assign_groups(groups, config)
+    assignment, group_split = _assign_groups(groups, config, image_categories, dataset)
     _fill_class_coverage_gaps(groups, group_split, assignment, image_categories, dataset)
     return assignment, group_split
 
 
 def _assign_groups(
-    groups: dict[int, list[int]], config: SplitConfig
+    groups: dict[int, list[int]],
+    config: SplitConfig,
+    image_categories: dict[int, set[int]],
+    dataset: CocoDataset,
 ) -> tuple[dict[str, list[int]], dict[int, str]]:
-    """Deficit-balanced (Bresenham-style) group assignment.
+    """Deficit-balanced (Bresenham-style) group assignment, stratified by class.
 
-    Groups are visited in a seeded-shuffle order; at every step the group
-    goes to whichever split currently has the largest gap between its target
-    and actual image count. This keeps every split within roughly one
-    group's size of its target proportion, and is fully determined by the
-    seed (same seed -> same visiting order -> same assignment).
+    Groups are visited in a seeded-shuffle order, but that order is then
+    re-sorted so the groups carrying the rarest classes go first — while
+    every split still has the most room relative to its target, which is
+    when a scarce class's placement matters most. Each group is scored by
+    the remaining deficit, per split, of its *scarcest* carried class (target
+    count for that class in that split minus what's already there), with the
+    group's overall size deficit as a tie-breaker; it goes to whichever split
+    scores highest. This keeps each class's own train/val/test proportions
+    close to the configured ratios, not just the overall image count.
+
+    (Previously this only used the overall size deficit, so a minority class
+    could land lopsided across splits even when the totals looked fine — see
+    the "Mau's review" tests in tests/test_splits.py.)
+
+    Fully determined by the seed: the shuffle picks the tie-break order, and
+    everything downstream of it is a deterministic sort/max, so the same seed
+    always produces the same assignment.
     """
 
     target_ratio = {"train": config.train, "val": config.val, "test": config.test}
     total_images = sum(len(members) for members in groups.values())
     target_count = {name: ratio * total_images for name, ratio in target_ratio.items()}
-    counts = dict.fromkeys(_SPLIT_NAMES, 0)
+
+    group_categories: dict[int, Counter[int]] = {
+        group_id: Counter(
+            category_id
+            for image_id in members
+            for category_id in image_categories.get(image_id, ())
+        )
+        for group_id, members in groups.items()
+    }
+    total_by_category: Counter[int] = Counter()
+    for counts in group_categories.values():
+        total_by_category.update(counts)
+    target_class_count = {
+        name: {category_id: ratio * total for category_id, total in total_by_category.items()}
+        for name, ratio in target_ratio.items()
+    }
 
     ordered_group_ids = sorted(groups)
     random.Random(config.seed).shuffle(ordered_group_ids)
+    shuffle_position = {group_id: index for index, group_id in enumerate(ordered_group_ids)}
 
+    def rarity_key(group_id: int) -> tuple[float, int]:
+        categories = group_categories[group_id]
+        if not categories:
+            return (float("inf"), shuffle_position[group_id])
+        rarest = min(total_by_category[category_id] for category_id in categories)
+        return (rarest, shuffle_position[group_id])
+
+    # Rarest-class-first: the few groups carrying a scarce class are the ones
+    # most at risk of landing lopsided if placed last, so they get first pick
+    # of each split's remaining capacity.
+    visiting_order = sorted(ordered_group_ids, key=rarity_key)
+
+    counts = dict.fromkeys(_SPLIT_NAMES, 0)
+    class_counts: dict[str, Counter[int]] = {name: Counter() for name in _SPLIT_NAMES}
     assignment: dict[str, list[int]] = {name: [] for name in _SPLIT_NAMES}
     group_split: dict[int, str] = {}
 
-    for group_id in ordered_group_ids:
+    for group_id in visiting_order:
         members = groups[group_id]
-        chosen = max(_SPLIT_NAMES, key=lambda name: target_count[name] - counts[name])
+        categories = group_categories[group_id]
+        driving_category = (
+            min(categories, key=lambda category_id: total_by_category[category_id])
+            if categories
+            else None
+        )
+
+        def score(
+            name: str, driving_category: int | None = driving_category
+        ) -> tuple[float, float]:
+            total_deficit = target_count[name] - counts[name]
+            if driving_category is None:
+                return (total_deficit, total_deficit)
+            class_deficit = (
+                target_class_count[name][driving_category] - class_counts[name][driving_category]
+            )
+            return (class_deficit, total_deficit)
+
+        chosen = max(_SPLIT_NAMES, key=score)
         group_split[group_id] = chosen
         counts[chosen] += len(members)
+        for category_id, occurrences in categories.items():
+            class_counts[chosen][category_id] += occurrences
         assignment[chosen].extend(members)
 
     return assignment, group_split
@@ -217,55 +288,102 @@ def _fill_class_coverage_gaps(
     image_categories: dict[int, set[int]],
     dataset: CocoDataset,
 ) -> None:
-    ordered_group_ids = sorted(groups)
+    """Guarantee every category in ``dataset`` appears in both val and test,
+    without ever un-covering a class a split already has.
 
-    for required_split in ("val", "test"):
-        present = {
+    A group is only moved out of val or test — to satisfy the *other* one's
+    coverage — when that's *safe*: every category the group carries must
+    still be covered by some other group left behind in its current split.
+    Moving a group out of train is always allowed, since only val/test carry
+    a coverage guarantee.
+
+    This is the fix for the review finding that the previous version could
+    move a group (in particular a multilabel one, carrying more than one
+    category) from val to test, or vice versa, to satisfy one missing class,
+    silently dropping a *different* class that split already had covered —
+    see the "Mau's review" tests in tests/test_splits.py. When a category
+    only has one eligible group in the whole dataset and val and test both
+    need it, only one of them can have it (a group can't be split across
+    splits) — that's a genuine data-scarcity limit, not a bug, and this
+    function leaves the already-covered split alone rather than shuffling
+    the gap around.
+
+    Runs to a fixed point (bounded by category count) instead of a single
+    val-then-test pass, so a fill made while completing one split's coverage
+    is re-checked against the other, not just assumed to stick.
+    """
+
+    group_category_ids = {
+        group_id: {
             category_id
-            for image_id in assignment[required_split]
+            for image_id in members
             for category_id in image_categories.get(image_id, ())
         }
-        missing = [category.id for category in dataset.categories if category.id not in present]
+        for group_id, members in groups.items()
+    }
+    ordered_group_ids = sorted(groups)
+    all_category_ids = [category.id for category in dataset.categories]
 
-        for category_id in missing:
-            donor = _find_donor_group(
-                category_id,
-                required_split,
-                groups,
-                group_split,
-                image_categories,
-                ordered_group_ids,
-            )
-            if donor is None:
-                # The category has no eligible donor left outside this split —
-                # every image carrying it is already here or nowhere in the
-                # dataset. Nothing left to move.
-                continue
-            _move_group(donor, required_split, groups, group_split, assignment)
+    def present(split_name: str) -> set[int]:
+        return {
+            category_id
+            for image_id in assignment[split_name]
+            for category_id in image_categories.get(image_id, ())
+        }
 
-
-def _find_donor_group(
-    category_id: int,
-    required_split: str,
-    groups: dict[int, list[int]],
-    group_split: dict[int, str],
-    image_categories: dict[int, set[int]],
-    ordered_group_ids: list[int],
-) -> int | None:
-    other_required = "test" if required_split == "val" else "val"
-    # Prefer donating from train (the largest, least disruptive pool) before
-    # borrowing from the other split that also needs full class coverage.
-    for source in ("train", other_required):
-        candidates = [
-            group_id
+    def other_groups_cover(category_id: int, split_name: str, excluding: int) -> bool:
+        return any(
+            category_id in group_category_ids[group_id]
             for group_id in ordered_group_ids
-            if group_split[group_id] == source
-            and any(category_id in image_categories.get(img, ()) for img in groups[group_id])
-        ]
-        if candidates:
-            candidates.sort(key=lambda group_id: (len(groups[group_id]), group_id))
-            return candidates[0]
-    return None
+            if group_id != excluding and group_split[group_id] == split_name
+        )
+
+    def is_safe_donor(group_id: int, source_split: str) -> bool:
+        if source_split == "train":
+            return True
+        return all(
+            other_groups_cover(category_id, source_split, excluding=group_id)
+            for category_id in group_category_ids[group_id]
+        )
+
+    def find_donor(category_id: int, required_split: str) -> int | None:
+        other_required = "test" if required_split == "val" else "val"
+        # Prefer donating from train (the largest, least disruptive pool, and
+        # the only one always safe to take from) before borrowing from the
+        # other split that also needs full class coverage.
+        for source in ("train", other_required):
+            candidates = [
+                group_id
+                for group_id in ordered_group_ids
+                if group_split[group_id] == source
+                and category_id in group_category_ids[group_id]
+                and is_safe_donor(group_id, source)
+            ]
+            if candidates:
+                candidates.sort(key=lambda group_id: (len(groups[group_id]), group_id))
+                return candidates[0]
+        return None
+
+    changed = True
+    max_passes = 2 * len(all_category_ids) + 4  # generous, deterministic bound
+    passes = 0
+    while changed and passes < max_passes:
+        changed = False
+        passes += 1
+        for required_split in ("val", "test"):
+            missing = [
+                category_id for category_id in all_category_ids
+                if category_id not in present(required_split)
+            ]
+            for category_id in missing:
+                donor = find_donor(category_id, required_split)
+                if donor is None:
+                    # No donor can cover this category here without un-covering
+                    # it from a split that already relies on it — nothing left
+                    # to safely move.
+                    continue
+                _move_group(donor, required_split, groups, group_split, assignment)
+                changed = True
 
 
 def _move_group(
