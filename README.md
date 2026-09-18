@@ -125,3 +125,34 @@ También corre contenedorizado junto al resto del stack. Está detrás de un pro
 ```bash
 docker compose --profile pipeline run --rm pipeline <comando>
 ```
+
+### DVC (OPS-04)
+
+El pipeline reproducible vive en `pipeline/dvc.yaml`: `ingest → validate → analyze → quality_gate → split → release`. Parámetros (categorías objetivo, umbrales de analizadores, proporciones de split) en `pipeline/params.yaml`; el dataset crudo (`pipeline/data/raw/coco-dataset.json`) nunca se versiona en git — solo su puntero `.dvc` — y se sincroniza contra MinIO (DEV) como remote de DVC.
+
+**Instalar DVC por separado**, no como parte de `requirements-dev.txt`: `dvc[s3]` trae `aiobotocore`, que exige un rango de `botocore` incompatible con el `boto3` ya fijado del pipeline — mezclarlos en el mismo lockfile rompe la resolución. Instálalo aislado (`pipx install "dvc[s3]"` es lo más simple) o en un entorno Python separado.
+
+**El remote DEV usa el hostname de Compose** (`http://minio:9000` en `.dvc/config`, ya versionado), así que `dvc repro`/`push`/`pull` necesitan correr donde ese hostname resuelva — dentro del profile `pipeline` de Compose, o en un contenedor conectado a la misma red (`docker network connect` / `--network proyecto-02-dataset-quality_default`).
+
+**Dentro del profile `pipeline` de Compose, esto ya funciona sin pasos manuales**: el bucket `dvc-cache` lo crea el servicio `minio-init` (igual de profile-gated que `pipeline`, corre `mc mb --ignore-existing` una vez contra MinIO) y las credenciales llegan al binario `dvc` — que vive en su propio venv aislado dentro de la imagen, con su propio boto3, separado del `Settings`/`OBJECT_STORE_*` de la app — vía las variables estándar `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` ya seteadas en el `environment:` del servicio `pipeline`:
+
+```bash
+docker compose --profile pipeline run --rm pipeline sh -c "PYTHONPATH=src dvc repro"
+docker compose --profile pipeline run --rm pipeline dvc push -r dev
+docker compose --profile pipeline run --rm pipeline dvc pull -r dev
+```
+
+**Corriendo `dvc` fuera de Compose** (por ejemplo directo en el host) sí hace falta lo anterior a mano — ni el bucket ni las variables `AWS_*` existen fuera del servicio `pipeline`:
+
+```bash
+cd pipeline
+dvc remote modify --local dev access_key_id minioadmin
+dvc remote modify --local dev secret_access_key minioadmin
+PYTHONPATH=src dvc repro
+dvc push -r dev
+dvc pull -r dev
+```
+
+`dvc repro` corrido dos veces no debe rehacer ninguna etapa; tocar `params.yaml` o `quality.yaml` solo debe rehacer las etapas realmente afectadas (`dvc dag` muestra el grafo completo).
+
+**Limitación conocida:** la verificación de `duplicates` (pHash) necesita descargar las imágenes reales desde el object store — el export COCO solo trae el nombre de archivo, no el `storage_key` de MinIO, así que la etapa `analyze` lo resuelve consultando la tabla `images` de MariaDB por `id` (los IDs de COCO son los mismos IDs de la BD). `duplicates` es un check `severity: fail` en `quality.yaml`, así que si esa BD/objeto no está disponible en el entorno donde corre `dvc repro` (por ejemplo, corriendo contra un dataset anotado en otra instancia), la etapa `analyze` **falla cerrado**: lanza `DuplicateBytesUnavailableError` y no se genera `quality.json` — nunca se reporta un `duplicates: 0` fabricado que dejaría pasar el gate sin haber medido nada de verdad.

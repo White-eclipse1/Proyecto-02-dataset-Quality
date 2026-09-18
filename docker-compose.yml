@@ -63,6 +63,24 @@ services:
     ports:
       - "8080:80"
 
+  # One-shot bucket init for DVC's DEV remote (s3://dvc-cache). Not needed by
+  # `backend` — it creates its own `image-annotations` bucket itself
+  # (ensureMinioBucket() in startup.service.ts) — but nothing analogous exists
+  # for dvc-cache, so without this, `dvc push/pull -r dev` fails on a clean
+  # `docker compose up` with no bucket to talk to. Profile-gated like
+  # `pipeline` itself: never runs on the default M1 startup path.
+  minio-init:
+    image: quay.io/minio/mc:latest
+    profiles: ["pipeline"]
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      sh -c "
+        until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done &&
+        mc mb --ignore-existing local/dvc-cache
+      "
+
   # CLI/batch tooling (no HTTP server yet), invoked on demand once DVC stages
   # exist — not part of the default `docker compose up`, so it never affects
   # the one-command app+MariaDB+MinIO startup:
@@ -75,6 +93,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      minio-init:
+        condition: service_completed_successfully
     environment:
       DB_HOST: mariadb
       DB_PORT: 3306
@@ -92,6 +112,12 @@ services:
       OBJECT_STORE_REGION: us-east-1
       OBJECT_STORE_USE_SSL: "false"
       QUALITY_GATE_CONFIG_PATH: quality.yaml
+      # dvc-s3 authenticates via its own boto3 install (isolated venv, see
+      # pipeline/Dockerfile) — it reads these standard AWS SDK env var names
+      # directly, not the app's own OBJECT_STORE_* Settings fields above,
+      # which only the Python app code (not the separate `dvc` binary) reads.
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
 
 volumes:
   mariadb_data:

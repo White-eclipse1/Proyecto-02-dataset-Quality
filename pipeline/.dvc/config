@@ -1,0 +1,5 @@
+[core]
+    remote = dev
+['remote "dev"']
+    url = s3://dvc-cache
+    endpointurl = http://minio:9000

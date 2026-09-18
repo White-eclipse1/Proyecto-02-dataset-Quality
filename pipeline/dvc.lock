@@ -1,0 +1,213 @@
+schema: '2.0'
+stages:
+  ingest:
+    cmd: PYTHONPATH=src python -m dataset_quality.ingestion 
+      data/raw/coco-dataset.json --output data/interim/coco.json
+    deps:
+    - path: data/raw/coco-dataset.json
+      hash: md5
+      md5: 0ac4ecdbbd5a9b3144624ec86009b9e7
+      size: 345858
+      isexec: true
+    - path: src/dataset_quality/analyzers/m3.py
+      hash: md5
+      md5: 9de6ef558424c0424e5e5cc48b1a42bb
+      size: 5363
+      isexec: true
+    - path: src/dataset_quality/ingestion/__main__.py
+      hash: md5
+      md5: b08bc8b691430f08ca57f1ab1dd2ee78
+      size: 1470
+      isexec: true
+    - path: src/dataset_quality/ingestion/models.py
+      hash: md5
+      md5: 60241594e79f7d530b26a0bd02e05bda
+      size: 3513
+      isexec: true
+    outs:
+    - path: data/interim/coco.json
+      hash: md5
+      md5: 9f9372956e21b889f5af1a8a3bf81c54
+      size: 345922
+  validate:
+    cmd: PYTHONPATH=src python -m dataset_quality.analyzers.m3 
+      data/interim/coco.json --category person --category car > 
+      data/interim/m3_baseline.json
+    deps:
+    - path: data/interim/coco.json
+      hash: md5
+      md5: 9f9372956e21b889f5af1a8a3bf81c54
+      size: 345922
+    - path: src/dataset_quality/analyzers/m3.py
+      hash: md5
+      md5: 9de6ef558424c0424e5e5cc48b1a42bb
+      size: 5363
+      isexec: true
+    - path: src/dataset_quality/ingestion/models.py
+      hash: md5
+      md5: 60241594e79f7d530b26a0bd02e05bda
+      size: 3513
+      isexec: true
+    params:
+      params.yaml:
+        m3.target_categories:
+        - person
+        - car
+    outs:
+    - path: data/interim/m3_baseline.json
+      hash: md5
+      md5: 62f4c29c51f77f10b7e6233107689535
+      size: 513
+  analyze:
+    cmd: PYTHONPATH=src python -m dataset_quality.analyzers 
+      data/interim/coco.json --m3-baseline data/interim/m3_baseline.json 
+      --small-object-max-width 32 --small-object-max-height 32 
+      --class-imbalance-min-images 300 --spatial-grid-size 3 --output 
+      data/interim/observations.json --duplicate-pairs-output 
+      data/interim/duplicate_pairs.json
+    deps:
+    - path: data/interim/coco.json
+      hash: md5
+      md5: 9f9372956e21b889f5af1a8a3bf81c54
+      size: 345922
+    - path: data/interim/m3_baseline.json
+      hash: md5
+      md5: 62f4c29c51f77f10b7e6233107689535
+      size: 513
+    - path: src/dataset_quality/analyzers/__main__.py
+      hash: md5
+      md5: c3b9a3f43739d77889818cae19688207
+      size: 6183
+      isexec: true
+    - path: src/dataset_quality/analyzers/dq04.py
+      hash: md5
+      md5: b914a6ba2dd57fbe98c14ee840201c1a
+      size: 7242
+      isexec: true
+    - path: src/dataset_quality/analyzers/dq05.py
+      hash: md5
+      md5: 176b16eaf084efa717d151667483d8e5
+      size: 6508
+      isexec: true
+    - path: src/dataset_quality/analyzers/dq06.py
+      hash: md5
+      md5: 8f4c5a30d2a1010f3ba34dbd4f6c545a
+      size: 3951
+      isexec: true
+    params:
+      params.yaml:
+        analyze.class_imbalance_min_images: 300
+        analyze.small_object_max_height: 32
+        analyze.small_object_max_width: 32
+        analyze.spatial_grid_size: 3
+    outs:
+    - path: data/interim/duplicate_pairs.json
+      hash: md5
+      md5: d751713988987e9331980363e24189ce
+      size: 2
+    - path: data/interim/observations.json
+      hash: md5
+      md5: 3b2e24b1af8a0be5c434c6fe31749101
+      size: 190
+  quality_gate:
+    cmd: PYTHONPATH=src python -m dataset_quality.quality_gate.runner --policy 
+      quality.yaml --observations data/interim/observations.json 
+      --dataset-version v0.1.0-dev --report data/interim/quality.json
+    deps:
+    - path: data/interim/observations.json
+      hash: md5
+      md5: 3b2e24b1af8a0be5c434c6fe31749101
+      size: 190
+    - path: quality.yaml
+      hash: md5
+      md5: c28719ab9cb919c1995485f657e7645c
+      size: 735
+      isexec: true
+    - path: src/dataset_quality/quality_gate/runner.py
+      hash: md5
+      md5: 05e98bdf18925893ea9712af96a2c763
+      size: 3722
+      isexec: true
+    params:
+      params.yaml:
+        dataset_version: v0.1.0-dev
+    outs:
+    - path: data/interim/quality.json
+      hash: md5
+      md5: 802deea7eb4c86367fc894c42bbc555e
+      size: 1791
+  split:
+    cmd: PYTHONPATH=src python -m dataset_quality.splits data/interim/coco.json 
+      --quality-report data/interim/quality.json --duplicate-pairs 
+      data/interim/duplicate_pairs.json --dataset-version v0.1.0-dev --train 0.7
+      --val 0.15 --test 0.15 --seed 42 --report-output data/interim/splits.json 
+      --assignment-output data/interim/split_assignment.json
+    deps:
+    - path: data/interim/coco.json
+      hash: md5
+      md5: 9f9372956e21b889f5af1a8a3bf81c54
+      size: 345922
+    - path: data/interim/duplicate_pairs.json
+      hash: md5
+      md5: d751713988987e9331980363e24189ce
+      size: 2
+    - path: data/interim/quality.json
+      hash: md5
+      md5: 802deea7eb4c86367fc894c42bbc555e
+      size: 1791
+    - path: src/dataset_quality/splits/__main__.py
+      hash: md5
+      md5: 6dd01106c5759b127061100b3c74a863
+      size: 2759
+      isexec: true
+    - path: src/dataset_quality/splits/generator.py
+      hash: md5
+      md5: 821f4a802644b0b8745c25255b72617f
+      size: 18311
+      isexec: true
+    params:
+      params.yaml:
+        dataset_version: v0.1.0-dev
+        split.seed: 42
+        split.test: 0.15
+        split.train: 0.7
+        split.val: 0.15
+    outs:
+    - path: data/interim/split_assignment.json
+      hash: md5
+      md5: 63667c5b4a908a305aba7fb182850eed
+      size: 2745
+    - path: data/interim/splits.json
+      hash: md5
+      md5: b6b248de7e6fc9cec97b54e0ef8bb78f
+      size: 780
+  release:
+    cmd: PYTHONPATH=src python -m dataset_quality.versioning --coco 
+      data/interim/coco.json --quality-report data/interim/quality.json 
+      --dataset-version v0.1.0-dev --output data/interim/versions.json
+    deps:
+    - path: data/interim/coco.json
+      hash: md5
+      md5: 9f9372956e21b889f5af1a8a3bf81c54
+      size: 345922
+    - path: data/interim/quality.json
+      hash: md5
+      md5: 802deea7eb4c86367fc894c42bbc555e
+      size: 1791
+    - path: data/interim/splits.json
+      hash: md5
+      md5: b6b248de7e6fc9cec97b54e0ef8bb78f
+      size: 780
+    - path: src/dataset_quality/versioning/__main__.py
+      hash: md5
+      md5: 31131ff08f0ce03a26f69d5153182122
+      size: 2413
+      isexec: true
+    params:
+      params.yaml:
+        dataset_version: v0.1.0-dev
+    outs:
+    - path: data/interim/versions.json
+      hash: md5
+      md5: 1ccaf71c376b30ba6c558582d66acd1f
+      size: 601

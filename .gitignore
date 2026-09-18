@@ -41,3 +41,11 @@ override.tf.json
 *_override.tf.json
 *.tfvars
 *.tfvars.json
+
+# DVC (pipeline/) — .dvc/cache and .dvc/tmp are always local-only. The actual
+# dataset/intermediate files under data/raw and data/interim are excluded by
+# DVC's own auto-generated .gitignore files inside those directories (created
+# by `dvc add`/`dvc repro`), not here — a blanket rule here would also hide
+# the *.dvc pointer files and dvc.lock outputs that DO need to be tracked.
+pipeline/.dvc/cache/
+pipeline/.dvc/tmp/
