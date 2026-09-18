@@ -9,10 +9,20 @@ stages:
       md5: 0ac4ecdbbd5a9b3144624ec86009b9e7
       size: 345858
       isexec: true
+    - path: src/dataset_quality/analyzers/m3.py
+      hash: md5
+      md5: 9de6ef558424c0424e5e5cc48b1a42bb
+      size: 5363
+      isexec: true
     - path: src/dataset_quality/ingestion/__main__.py
       hash: md5
-      md5: bb8e7088a45c90cc54b8dcae6644c4bc
-      size: 1426
+      md5: b08bc8b691430f08ca57f1ab1dd2ee78
+      size: 1470
+      isexec: true
+    - path: src/dataset_quality/ingestion/models.py
+      hash: md5
+      md5: 60241594e79f7d530b26a0bd02e05bda
+      size: 3513
       isexec: true
     outs:
     - path: data/interim/coco.json
@@ -32,6 +42,11 @@ stages:
       hash: md5
       md5: 9de6ef558424c0424e5e5cc48b1a42bb
       size: 5363
+      isexec: true
+    - path: src/dataset_quality/ingestion/models.py
+      hash: md5
+      md5: 60241594e79f7d530b26a0bd02e05bda
+      size: 3513
       isexec: true
     params:
       params.yaml:
