@@ -154,16 +154,95 @@ Verificado cargando `quality.json` con el `QualityReport` real de APP-05
 nuevo bloque `dataset_summary`
 (`pipeline/tests/test_quality_policy.py`).
 
-## Pendiente (fuera de alcance de APP-01 / APP-04 / APP-05 / APP-06)
+## Reconciliación con APP-07
 
-- Consumo real desde la Web App una vez exista el scaffolding de rutas
-  (`APP-02`, ya completo).
-- Reemplazar las cifras mock de `splits.json` por una corrida real del
-  generador de `APP-04` sobre el dataset del equipo — eso, y conectar
-  `quality.json`/`versions.json` a sus fuentes reales (incluyendo
-  `dataset_summary`), es alcance de `APP-07`.
+`APP-07` conecta la Web App a las salidas REALES de la pipeline en vez de
+los mocks estáticos de `frontend/public/contracts/*.json` (copias de este
+directorio, ver "Estado" arriba). El AC pedía dos cosas: que las pantallas
+de solo lectura muestren datos reales, y que `Settings` persista de verdad
+contra `pipeline/quality.yaml` (Agent Test: un cambio en Settings afecta la
+siguiente corrida del Quality Gate, `dvc repro`).
+
+Antes de este ticket no existía ningún mecanismo para que el backend
+(Node/Express, Fase 2) o el frontend leyeran/escribieran los archivos de
+este directorio ni `pipeline/quality.yaml` — solo el Copilot (Python,
+`copilot/store.py`) los tocaba. Se agregó una capa nueva en el backend
+(`backend/src/logic/pipeline-contracts.service.ts`,
+`backend/src/logic/quality-policy.service.ts` +
+`quality-policy.builder.ts`, spec completo en
+`backend/specs/pipeline-contracts.spec.md`, SPEC-PIPE-001):
+
+- `GET /quality-report`, `GET /split-report`, `GET /version-history` leen
+  `contracts/quality.json` / `splits.json` / `versions.json` y los
+  devuelven **tal cual** — el backend NO revalida su forma contra un
+  esquema propio. La forma ya está garantizada por los modelos Pydantic
+  `extra = "forbid"` de la pipeline (documentados en las reconciliaciones
+  de arriba) y el frontend la valida con Zod al recibirla
+  (`frontend/src/lib/contracts/schemas.ts`); una tercera copia del esquema
+  en TypeScript del lado del backend solo arriesgaría que las tres
+  copias se desincronicen sin que nada lo note. Si el archivo todavía no
+  existe (la pipeline no ha corrido), el backend responde 404 con un
+  mensaje explícito en vez de un 500 genérico o un objeto vacío que la UI
+  pudiera confundir con "dataset real sin datos".
+- `GET`/`PUT /quality-policy` leen y escriben `pipeline/quality.yaml`
+  directamente — el mismo archivo que `dataset_quality.quality_gate.runner`
+  lee en cada corrida (`pipeline/dvc.yaml`, stage `quality_gate`), sin
+  ninguna copia intermedia. `PUT` edita ÚNICAMENTE `threshold` y
+  `severity` por check: `label`, `comparison` y `unit` nunca los expone
+  `Settings` para editar, y se conservan tal cual estaban. El body debe
+  traer el conjunto EXACTO de `check_id` que ya existe en el archivo — ni
+  uno de menos ni uno nuevo — porque agregar/quitar checks sigue siendo
+  decisión de Data Quality, no de la Web App.
+- El invariante de negocio `min_images_per_class.severity == "fail"` y
+  `threshold >= 300` (`QualityPolicy.require_minimum_images_policy`,
+  `pipeline/src/dataset_quality/quality_gate/models.py`) se reimplementó
+  en TypeScript puro (`quality-policy.builder.ts`) para que `PUT
+  /quality-policy` lo rechace con 400 ANTES de tocar el disco — no basta
+  con que la pipeline lo vuelva a validar en la siguiente corrida, porque
+  para entonces `Settings` ya habría mostrado "guardado" con éxito.
+
+En `docker-compose.yml`, el servicio `backend` monta `./contracts` como
+volumen de solo lectura y `./pipeline/quality.yaml` de lectura-escritura
+(mismas rutas que usa la pipeline), configurables vía `CONTRACTS_DIR` /
+`QUALITY_POLICY_PATH` (ver `.env.example` / `.env.production.example`).
+
+Del lado del frontend, `Overview`, `Analyzers`, `Splits`, `Versions` y
+`Copilot` cambiaron de `useContractFetch` (lee los JSON estáticos de
+`public/contracts/`) a `useValidatedFetch` (pasa por el proxy `/api` hacia
+el backend real). `Settings` se reescribió por completo: ya no lee
+`quality.json` (un reporte de una corrida) sino `GET /quality-policy`
+(`qualityPolicySchema`, la política editable), y el botón "Guardar" hace
+`PUT /quality-policy` con el conjunto completo de checks (editados y sin
+tocar) — ver `frontend/src/lib/api/qualityPolicy.ts`. Antes de `APP-07`,
+`Settings` advertía explícitamente que los cambios eran locales a la
+sesión y se perdían al recargar (ver "Reconciliación con APP-05" arriba);
+ese banner ahora describe la persistencia real.
+
+`useContractFetch.ts` y `frontend/public/contracts/*.json` se dejaron tal
+cual — ya no los usa ninguna pantalla, pero se conservan como referencia
+histórica de la forma mock original y para no invalidar `contracts-sync.test.ts`
+(que sigue verificando que la copia servida coincida con este directorio).
+Retirarlos por completo, si se decide, es un cambio de limpieza aparte.
+
+Verificado con `npm test` en `backend/` (86/86, incluyendo 19 pruebas
+nuevas de esta capa) y en `frontend/` (25/25, incluyendo el reemplazo de
+mocks por rutas reales y la persistencia de `Settings`), `tsc --noEmit` y
+`biome check` limpios en ambos paquetes, y una verificación de mutación en
+el invariante de `min_images_per_class` (backend) y en el armado del body
+completo de `PUT` (frontend): sabotear cada regla hace fallar exactamente
+la prueba que la cubre, nada más.
+
+## Pendiente (fuera de alcance de APP-01 / APP-04 / APP-05 / APP-06 / APP-07)
+
 - Reemplazar `SplitsSummary` (APP-06) por el `SplitResult` real de
   `APP-04` en `copilot/contracts.py`, ahora que esa rama ya está en `main`.
-- Persistencia real de ediciones de `Settings` contra `quality.yaml`, y
-  reincorporar `spatial_bias` a la política si Data Quality decide
-  retomarlo.
+- Reincorporar `spatial_bias` a `quality.yaml` si Data Quality decide
+  retomarlo — la pestaña de Analyzers ya está lista para mostrarlo sin
+  cambios adicionales (ver "Reconciliación con APP-05").
+- Cablear un chat real en la pantalla **Copilot** contra el servidor MCP y
+  el agente de `APP-06` — `APP-07` conecta esa pantalla a datos reales de
+  lectura, pero no construye la UI de chat en sí; ver
+  `frontend/src/pages/dataset/Copilot.tsx`.
+- Decidir si `useContractFetch.ts` y `frontend/public/contracts/*.json`
+  se retiran del todo ahora que ninguna pantalla los usa (ver
+  "Reconciliación con APP-07").
