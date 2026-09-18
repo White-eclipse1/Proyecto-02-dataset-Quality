@@ -97,25 +97,26 @@ pytest
 
 Las dependencias se editan en `requirements.in` / `requirements-dev.in` y se recompilan con `pip-compile --generate-hashes` hacia `requirements.txt` / `requirements-dev.txt`. Nunca se editan a mano los `.txt` compilados — si se hace, se pierde el hash-locking.
 
-**Windows (PowerShell):** el proyecto está fijado a Python 3.12
-(`pyproject.toml`), y si tienes varias versiones instaladas `python` puede
-no apuntar a esa. Usa el launcher para elegirla explícitamente:
+### Notas para Windows
+
+Los archivos `requirements*.txt` se compilan con `pip-compile --generate-hashes` en Linux/Mac. Eso deja fuera del lockfile cualquier dependencia transitiva marcada como solo-Windows (`sys_platform == "win32"` en su metadata) — `pip install -r requirements-dev.txt --require-hashes` falla en Windows con `"all requirements must have their versions pinned"` para esos paquetes, aunque el resto instale bien. Hasta ahora se han visto:
+
+- `colorama` (dependencia de `pytest` en Windows).
+- `pywin32` (dependencia de `mcp`, usado por el Dataset Copilot / APP-06, en Windows).
+
+Si `pip install -r requirements-dev.txt --require-hashes` se queja de alguno de estos (o de otro paquete nuevo con el mismo patrón), instálalo suelto primero y repite el comando — pip lo va a tratar como ya satisfecho y va a saltarse el requisito de hash solo para ese paquete:
 
 ```powershell
-py -0                         # lista las versiones instaladas
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt -r requirements-dev.txt
+pip install colorama pywin32
+pip install -r requirements-dev.txt --require-hashes
 ```
 
-Si el `pip install` truena con `In --require-hashes mode, all requirements
-must have their versions pinned` sobre `colorama`, es porque
-`requirements-dev.txt` se compiló en Linux/Mac y `colorama` (dependencia
-de `pytest` solo en Windows, vía `sys_platform == "win32"`) nunca quedó
-fijada ahí con hash. Instálala aparte antes y pip la salta en el resto:
+Además, en Windows conviene usar el lanzador `py` en vez de `python` a secas (puede no apuntar a la versión correcta si hay varios Pythons instalados). El proyecto está fijado a Python 3.12 (`pyproject.toml`):
 
 ```powershell
-pip install colorama
+py -0                       # lista los Pythons instalados
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt -r requirements-dev.txt
 ```
 

@@ -1,6 +1,4 @@
 {
-  "_contract": "versions.json",
-  "_note": "Mock fixture for APP-01. Shape only — numbers are illustrative, not real pipeline output.",
   "current_version": "v0.2.0-mock",
   "versions": [
     {

@@ -31,6 +31,11 @@ class Settings(BaseSettings):
 
     quality_gate_config_path: str = "quality.yaml"
 
+    # Dataset Copilot (APP-06). No default: AnthropicProvider.from_settings
+    # raises a clear error rather than silently running unauthenticated.
+    anthropic_api_key: str | None = None
+    copilot_model: str = "claude-sonnet-4-5"
+
     @property
     def database_url(self) -> str:
         return (

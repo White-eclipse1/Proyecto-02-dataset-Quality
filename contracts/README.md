@@ -83,7 +83,40 @@ forma real de la salida, pero todavía no corre contra un dataset real;
 eso es alcance de `APP-07` (conectar la Web App a las salidas reales del
 pipeline).
 
-## Pendiente (fuera de alcance de APP-01 / APP-04)
+## Reconciliación con APP-06
+
+`APP-06` agrega el servidor MCP de solo lectura y el Dataset Copilot
+(`pipeline/src/dataset_quality/copilot/`), que leen los tres contratos de
+este directorio (`quality.json`, `splits.json`, `versions.json`) tal cual
+están en disco — es el único I/O del Copilot (ver `copilot/store.py`).
+
+`versions.json` (Tier 5) no tenía todavía un modelo Pydantic estricto —
+`quality.json` ya lo tiene desde `DQ-02`, y `splits.json` lo obtiene en
+`APP-04`. `APP-06` define `VersionsReport` (`copilot/contracts.py`,
+`extra = "forbid"`) como el modelo real de `versions.json`, y al
+reconciliar se ajustó el archivo:
+
+- Se quitaron los campos `_contract`/`_note` del nivel superior, igual que
+  se hizo con `quality.json` en `DQ-02`: `VersionsReport` no permite campos
+  fuera de `current_version` y `versions`, así que cualquier metadato de
+  mock rompe la validación real.
+- No se tocó la forma de `environments` (`dev`/`prod`) ni `diff_from_previous`:
+  ya coincidían campo por campo con `VersionEnvironments`/`VersionDiff`.
+
+Verificado cargando este archivo con el `VersionsReport` real de APP-06
+(`VersionsReport.model_validate(...)`): valida sin errores
+(`tests/test_copilot.py::test_real_versions_contract_validates_with_the_new_model`).
+
+Para `splits.json`, el Copilot todavía usa a propósito un modelo propio y
+más permisivo (`SplitsSummary`, `extra = "ignore"`) en lugar del
+`SplitResult` estricto de `APP-04` — quedó así de cuando `APP-04` todavía
+no estaba en `main`. Ahora que ya se mergeó, sigue pendiente un cambio de
+seguimiento (fuera de este PR) para reemplazar `SplitsSummary` por el
+`SplitResult` real; ver el `TODO(APP-04 merge)` en `copilot/contracts.py`.
+Mientras tanto, ninguna herramienta del Copilot deja de funcionar contra
+`main`.
+
+## Pendiente (fuera de alcance de APP-01 / APP-04 / APP-06)
 
 - Consumo real desde la Web App una vez exista el scaffolding de rutas
   (`APP-02`, ya completo).
@@ -91,6 +124,5 @@ pipeline).
   generador de `APP-04` sobre el dataset del equipo — eso, y conectar
   `quality.json`/`versions.json` a sus fuentes reales, es alcance de
   `APP-07`.
-- Reconciliar `versions.json` con quien implemente el versionado real vía
-  DVC (Tier 5, MLOps) — todavía no tiene un modelo Pydantic estricto
-  equivalente a `QualityReport`/`SplitResult` que lo valide.
+- Reemplazar `SplitsSummary` (APP-06) por el `SplitResult` real de
+  `APP-04` en `copilot/contracts.py`, ahora que esa rama ya está en `main`.
