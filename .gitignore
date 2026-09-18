@@ -27,3 +27,17 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 *.egg-info/
+
+# Terraform (infra/) — provider caches and state, never versioned.
+# .terraform.lock.hcl is NOT ignored: it's meant to be committed.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfvars
+*.tfvars.json
