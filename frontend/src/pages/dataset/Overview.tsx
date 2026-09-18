@@ -2,7 +2,7 @@ import { QualityStatusBadge } from "@/components/dataset/QualityStatusBadge";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useContractFetch } from "@/hooks/useContractFetch";
-import { qualityReportSchema } from "@/lib/contracts/schemas";
+import { type QualityReport, qualityReportSchema } from "@/lib/contracts/schemas";
 
 /**
  * Overview: estado del quality gate y resumen de checks, leído de
@@ -10,6 +10,14 @@ import { qualityReportSchema } from "@/lib/contracts/schemas";
  * no viene del pipeline real). Ningún número aquí está hardcodeado: todo
  * sale del fetch, así que cambiar el JSON público cambia lo que se ve sin
  * tocar este archivo.
+ *
+ * Las 4 cifras de resumen (imágenes, cajas, categorías, checks fallidos) y
+ * el estado del gate son el Acceptance Criteria de APP-05. Las primeras 3
+ * salen de `dataset_summary` (ver contracts/README.md, "Reconciliación con
+ * APP-05") — es opcional en el contrato porque el pipeline real todavía no
+ * siempre lo produce, así que si falta se muestra "—" en vez de inventar un
+ * número. "Checks fallidos" se deriva contando `checks` con
+ * `status === "fail"`: no necesita su propio campo en el contrato.
  */
 export function OverviewPage() {
   const report = useContractFetch("/contracts/quality.json", qualityReportSchema);
@@ -57,6 +65,8 @@ export function OverviewPage() {
               </div>
             </div>
 
+            <DatasetSummaryCards report={report.data} />
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {report.data.checks.map((check) => (
                 <div
@@ -83,5 +93,32 @@ export function OverviewPage() {
         )}
       </div>
     </main>
+  );
+}
+
+const SUMMARY_STAT_LABELS = {
+  total_images: "Total images",
+  total_bounding_boxes: "Total bounding boxes",
+  total_categories: "Categories",
+} as const;
+
+function DatasetSummaryCards({ report }: { report: QualityReport }) {
+  const failedChecks = report.checks.filter((check) => check.status === "fail").length;
+
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {(Object.keys(SUMMARY_STAT_LABELS) as (keyof typeof SUMMARY_STAT_LABELS)[]).map((key) => (
+        <div key={key} className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+          <p className="text-sm text-ink-muted">{SUMMARY_STAT_LABELS[key]}</p>
+          <p className="mt-1 text-2xl font-semibold text-ink">
+            {report.dataset_summary ? report.dataset_summary[key].toLocaleString("es") : "—"}
+          </p>
+        </div>
+      ))}
+      <div className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+        <p className="text-sm text-ink-muted">Failed checks</p>
+        <p className="mt-1 text-2xl font-semibold text-ink">{failedChecks}</p>
+      </div>
+    </div>
   );
 }

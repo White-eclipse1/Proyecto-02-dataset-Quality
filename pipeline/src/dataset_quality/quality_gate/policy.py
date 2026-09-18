@@ -8,7 +8,13 @@ from pathlib import Path
 
 import yaml
 
-from dataset_quality.quality_gate.models import QualityCheckResult, QualityPolicy, QualityReport
+from dataset_quality.ingestion.models import CocoDataset
+from dataset_quality.quality_gate.models import (
+    QualityCheckResult,
+    QualityDatasetSummary,
+    QualityPolicy,
+    QualityReport,
+)
 
 
 def load_policy(path: Path) -> QualityPolicy:
@@ -25,8 +31,16 @@ def evaluate_policy(
     observations: Mapping[str, float | int],
     dataset_version: str,
     generated_at: datetime | None = None,
+    dataset: CocoDataset | None = None,
 ) -> QualityReport:
-    """Turn analyzer observations into a report using policy thresholds and severities."""
+    """Turn analyzer observations into a report using policy thresholds and severities.
+
+    ``dataset`` is optional and additive: when passed, the returned report's
+    ``dataset_summary`` (APP-05, total images/bounding boxes/categories) is
+    computed from it. Existing callers that only have per-check observations
+    and no full ``CocoDataset`` in hand keep working unchanged, with
+    ``dataset_summary`` left as ``None``.
+    """
 
     results: list[QualityCheckResult] = []
     for check_id, check in policy.checks.items():
@@ -53,11 +67,21 @@ def evaluate_policy(
         )
 
     overall_status = _worst_status(result.status for result in results)
+    dataset_summary = (
+        QualityDatasetSummary(
+            total_images=len(dataset.images),
+            total_bounding_boxes=len(dataset.annotations),
+            total_categories=len(dataset.categories),
+        )
+        if dataset is not None
+        else None
+    )
     return QualityReport(
         dataset_version=dataset_version,
         generated_at=generated_at or datetime.now(UTC),
         overall_status=overall_status,
         checks=results,
+        dataset_summary=dataset_summary,
     )
 
 

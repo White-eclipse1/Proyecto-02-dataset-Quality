@@ -66,6 +66,22 @@ class QualityCheckResult(BaseModel):
     offending_samples: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class QualityDatasetSummary(BaseModel):
+    """Dataset-level totals shown on the Overview screen (APP-05).
+
+    None of these are derivable from a single ``QualityCheckResult`` — they
+    describe the dataset as a whole, not one check's observation — so they
+    live as their own optional block on ``QualityReport`` rather than being
+    bolted onto an existing check.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    total_images: int = Field(ge=0)
+    total_bounding_boxes: int = Field(ge=0)
+    total_categories: int = Field(ge=0)
+
+
 class QualityReport(BaseModel):
     """Serialized Quality Gate output consumed by downstream services."""
 
@@ -75,3 +91,7 @@ class QualityReport(BaseModel):
     generated_at: datetime
     overall_status: CheckStatus
     checks: list[QualityCheckResult] = Field(min_length=1)
+    # Optional and defaulted so existing callers of `evaluate_policy()` that
+    # don't pass a `CocoDataset` (and any report built before APP-05) keep
+    # validating unchanged — see `evaluate_policy`'s `dataset` parameter.
+    dataset_summary: QualityDatasetSummary | None = None
