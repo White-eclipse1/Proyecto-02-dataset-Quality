@@ -1,93 +1,57 @@
-# Reporte de Auditoría Independiente — M3 y Analizadores (DQ-07)
+# DQ-07 - Auditoria final M3 y analizadores
 
-**Fecha de auditoría:** 2026-09-18  
-**Ticket:** [DQ-07] Perform final M3 and analyzer correctness audit (#32)  
-**Responsable:** Santiago Ortiz (`Sir-roboot`) — Data Quality Engineer  
-**Rama:** `feat/phase-3-rol1-dq07`  
+## Fuente auditada
 
----
-
-## 1. Fuente y procedencia del dataset auditado
-
-| Campo | Valor auditado |
+| Campo | Valor |
 | --- | --- |
-| **Archivo origen** | `C:\Users\santi\Downloads\coco-dataset.json` |
-| **SHA-256 verificado** | `935e9bb639bfe966fdc3b1bbe95becf07dcd09f7567079642f22a73646531936` |
-| **Tamaño en disco** | 346,069 bytes |
-| **Total imágenes** | 313 |
-| **Total anotaciones** | 1,038 |
-| **Categorías presentes** | 3 (`person`: id 1, `car`: id 2, `dog`: id 3) |
-| **Clases objetivo confirmadas** | `person`, `car` |
+| COCO | `coco-dataset.json` proporcionado localmente |
+| SHA-256 | `45f2217c2d83fa953a6845ed8bcc7009e2bd297757c4d12fb7bdf847282136a7` |
+| Imagenes COCO | 311 |
+| Archivos de imagen | 310 en `D:\person_car_dataset` |
+| Anotaciones | 1,038 |
+| Categorias | 3 (`person`, `car`, `dog`) |
+| Clases M3 | `person`, `car` |
+| Politica pHash | hash de 8 x 8 y distancia Hamming maxima de 8 |
 
-> La huella SHA-256 coincide exactamente con las auditorías de línea base de DQ-03 y DQ-04, confirmando que se trata de la misma exportación oficial autorizada.
+Hay 310 archivos para 311 registros COCO porque dos registros referencian el mismo
+archivo; el analisis pHash lo confirma como el unico par duplicado exacto.
 
----
+## Resultado M3 despues de eliminar duplicados
 
-## 2. Tabla final de auditoría M3 por clase
+M3 requiere al menos dos clases con 300 imagenes distintas y validas.
 
-M3 exige al menos **dos clases con $\ge$ 300 imágenes distintas y válidas**.
+| Clase | Cajas validas | Imagenes antes | Imagenes despues | Umbral | Resultado |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `person` | 472 | 311 | 310 | 300 | Cumple |
+| `car` | 566 | 309 | 308 | 300 | Cumple |
 
-| Clase | ID | Total cajas | Cajas válidas | Cajas inválidas excluidas | Imágenes distintas con $\ge$ 1 caja válida | Umbral M3 | Estado antes de colapso | Faltante |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |
-| **`person`** | 1 | 472 | 472 | 0 | **311** | 300 | **Cumple** | 0 |
-| **`car`** | 2 | 566 | 566 | 0 | **309** | 300 | **Cumple** | 0 |
-| **`dog`** | 3 | 0 | 0 | 0 | **0** | 300 | No seleccionada | N/A |
+El par pHash es `image_id` 3 y 4, con distancia 0 y similitud 1.0. Al colapsar su
+componente conexo se elimina una imagen redundante sin perder evidencia de ninguna clase.
 
-### Reglas de conteo y exclusión aplicadas independientemente
-1. **Conteo por imagen:** Se contabilizan identificadores de imagen distintos (`image_id`), no la cantidad de cajas. Varias cajas de la misma clase en una imagen cuentan una sola vez.
-2. **Exclusión de cajas inválidas:** Se auditaron todas las cajas del dataset. 0 cajas presentan ancho o alto no positivos, coordenadas negativas o límites fuera de las dimensiones declaradas de su imagen.
-3. **Imágenes sin cajas válidas:** 2 imágenes del dataset de 313 no poseen cajas de las clases objetivo confirmadas (`person` o `car`).
+## Controles independientes
 
----
+| Metrica | Resultado |
+| --- | --- |
+| Cajas invalidas | 0 |
+| Objetos pequenos (<= 32 x 32 px) | 14 (1.3487%) |
+| Ratio de desbalance | 1.0065 (`person` / `car`) |
+| Pares duplicados pHash | 1 |
+| Grupos de duplicados | 1 |
+| Discrepancias frente a DQ-04 y DQ-05 | 0 |
 
-## 3. Comparativa independiente vs. sistema de producción
+## Conclusion
 
-Se compararon las métricas computadas por el motor independiente de auditoría (`dataset_quality.analyzers.dq07_audit`) contra los analizadores de producción (`dq04`, `dq05`, `m3`):
+**DQ-07 queda completado.** La auditoria independiente concuerda con los analizadores
+de produccion y M3 sigue cumpliendo tras el colapso de duplicados reales.
 
-| Métrica | Cálculo Independiente | Sistema Producción | Tolerancia / Criterio | Discrepancia |
-| --- | ---: | ---: | --- | --- |
-| **Cajas inválidas** | 0 | 0 | Exacta (0 boxes) | **0 (Coincide)** |
-| **Imágenes válidas `person`** | 311 | 311 | Exacta | **0 (Coincide)** |
-| **Imágenes válidas `car`** | 309 | 309 | Exacta | **0 (Coincide)** |
-| **Objetos pequeños ($< 32\times 32$ px)** | 14 cajas (1.3487%) | 14 cajas (1.3487%) | $\le 10^{-4}$ | **0 (Coincide)** |
-| **Ratio de desbalance de clases** | 1.0065 | 1.0065 | $\le 10^{-4}$ | **0 (Coincide)** |
-| **Clase mayoritaria** | `person` (311) | `person` (311) | Nominal | **0 (Coincide)** |
-| **Clase minoritaria** | `car` (309) | `car` (309) | Nominal | **0 (Coincide)** |
-
-**Resultado:** **0 discrepancias** entre el cálculo independiente y los analizadores del sistema.
-
----
-
-## 4. Colapso de duplicados transitivos y estado de recursos
-
-### Algoritmo de colapso transitivo implementado
-El motor de auditoría implementa el agrupamiento de duplicados mediante componentes conexos transitivos (Disjoint Set Union):
-- Si el par $(A, B)$ y el par $(B, C)$ son detectados como casi duplicados, forman un único grupo $\{A, B, C\}$.
-- **Preservación de evidencia:** Si cualquier imagen del grupo contiene anotaciones de una clase (ej. `person`), el representante colapsado preserva la evidencia de dicha clase.
-- Las imágenes independientes (no duplicadas) se conservan intactas.
-
-### Estado del cálculo pHash sobre el dataset real
-- El cálculo de pHash requiere los **píxeles reales** de cada imagen (como implementa `find_near_duplicate_images` vía Pillow e ImageHash).
-- Se auditó el entorno local, `Downloads`, el workspace y el volumen Docker `proyecto-02-dataset-quality_minio_data` (el cual solo contiene `.minio.sys` sin buckets cargados). Los binarios reales de las 313 imágenes no están presentes en el entorno local.
-- Conforme al procedimiento estipulado en `PROMPT_CONTINUACION_ROL_1_PROYECTO_02.md`:
-  > *"Si faltan binarios o M3 no cumple, deja DQ-07 pendiente; continúa DQ-08 con fixtures controlados y distingue esas pruebas de la validación del dataset real."*
-- **Estado de DQ-07:** La auditoría independiente de métricas COCO, exclusión de cajas, baseline M3 y algoritmo de colapso transitivo está **completada y verificada**. La validación final de M3 post-pHash sobre los datos reales queda **pendiente de la provisión de los binarios de las imágenes**.
-
----
-
-## 5. Comandos de reproducción
-
-En un contenedor Docker con Python 3.12 y el dataset montado en `/input/coco-dataset.json`:
+El detalle estructurado reproducible esta en
+[`dq07-m3-audit.json`](dq07-m3-audit.json). Para reproducirlo se necesita el mismo JSON
+y la carpeta de imagenes; en Docker sin acceso compartido a `D:` se debe copiar la
+carpeta a un contenedor temporal antes de ejecutar:
 
 ```bash
-python -m dataset_quality.analyzers.dq07_audit /input/coco-dataset.json \
-  --target-classes person car \
-  --min-images 300 \
-  --output /workspace/docs/dq07-m3-audit.json
-```
-
-Para ejecutar las pruebas unitarias de la auditoría independiente:
-
-```bash
-pytest -q tests/test_dq07_audit.py
+python -m dataset_quality.analyzers.dq07_audit coco-dataset.json \
+  --target-classes person car --min-images 300 \
+  --image-root /ruta/a/person_car_dataset --phash-max-distance 8 \
+  --output docs/dq07-m3-audit.json
 ```

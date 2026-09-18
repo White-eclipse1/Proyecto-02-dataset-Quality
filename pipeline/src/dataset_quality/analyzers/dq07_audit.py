@@ -27,7 +27,13 @@ from dataset_quality.analyzers.dq04 import (
     analyze_class_imbalance,
     analyze_small_objects,
 )
-from dataset_quality.analyzers.dq05 import detect_invalid_boxes
+from dataset_quality.analyzers.dq05 import (
+    DuplicateImagePair,
+    ImageReference,
+    PerceptualHashConfig,
+    detect_invalid_boxes,
+    find_near_duplicate_images,
+)
 from dataset_quality.ingestion.models import CocoDataset
 
 # ---------------------------------------------------------------------------
@@ -69,6 +75,7 @@ class OverallAuditReport(BaseModel):
     minority_class: str
     invalid_boxes_count: int
     duplicate_pairs_count: int
+    duplicate_pairs: list[DuplicateImagePair] = Field(default_factory=list)
     duplicate_groups_count: int
     collapsed_redundant_images_count: int
     m3_passes_before_collapse: bool
@@ -254,6 +261,41 @@ def audit_class_imbalance(image_counts: dict[str, int]) -> tuple[float, str, str
     return ratio, majority_class, minority_class
 
 
+def image_references_from_coco(raw_coco: dict[str, Any], image_root: Path) -> list[ImageReference]:
+    """Resolve every COCO ``file_name`` below ``image_root`` for pHash analysis.
+
+    A missing file is an audit error rather than a silently skipped sample: skipping it
+    would make the duplicate and post-collapse M3 result incomplete.
+    """
+    root = image_root.resolve()
+    references: list[ImageReference] = []
+    missing: list[str] = []
+
+    for image in raw_coco.get("images", []):
+        if not isinstance(image, dict):
+            continue
+        image_id = image.get("id")
+        file_name = image.get("file_name")
+        if not isinstance(image_id, int) or not isinstance(file_name, str):
+            raise ValueError(
+                "Each COCO image needs integer id and string file_name for pHash audit."
+            )
+
+        resolved_path = (root / file_name).resolve()
+        if not resolved_path.is_relative_to(root):
+            raise ValueError(f"COCO file_name escapes image root: {file_name}")
+        if not resolved_path.is_file():
+            missing.append(file_name)
+            continue
+        references.append(ImageReference(image_id=image_id, path=resolved_path))
+
+    if missing:
+        shown = ", ".join(sorted(missing)[:5])
+        suffix = "..." if len(missing) > 5 else ""
+        raise ValueError(f"Missing {len(missing)} COCO image files below {root}: {shown}{suffix}")
+    return references
+
+
 # ---------------------------------------------------------------------------
 # Comprehensive Audit Runner
 # ---------------------------------------------------------------------------
@@ -263,9 +305,14 @@ def run_independent_audit(
     source_path: Path,
     target_classes: list[str],
     duplicate_pairs: list[tuple[int, int]] | None = None,
+    image_root: Path | None = None,
+    phash_config: PerceptualHashConfig | None = None,
     min_images_per_class: int = 300,
 ) -> OverallAuditReport:
     """Execute complete independent audit and compare with system analyzers."""
+    if duplicate_pairs is not None and image_root is not None:
+        raise ValueError("Provide duplicate pairs or image_root for pHash, not both.")
+
     raw_coco = json.loads(source_path.read_text(encoding="utf-8"))
     sha256_hash = compute_sha256(source_path)
 
@@ -307,7 +354,15 @@ def run_independent_audit(
             valid_images_by_class[cat_name].add(img_id)
 
     # 4. Transitive duplicate collapse
-    pairs = duplicate_pairs or []
+    duplicate_details: list[DuplicateImagePair] = []
+    if image_root is not None:
+        duplicate_result = find_near_duplicate_images(
+            image_references_from_coco(raw_coco, image_root), config=phash_config
+        )
+        duplicate_details = duplicate_result.pairs
+        pairs = [(pair.image_id_a, pair.image_id_b) for pair in duplicate_details]
+    else:
+        pairs = duplicate_pairs or []
     duplicate_groups = audit_transitive_duplicate_groups(pairs)
     collapsed_counts, redundant_removed = collapse_duplicates_per_class(
         valid_images_by_class, duplicate_groups
@@ -412,6 +467,7 @@ def run_independent_audit(
         minority_class=minority,
         invalid_boxes_count=len(invalid_ann_ids),
         duplicate_pairs_count=len(pairs),
+        duplicate_pairs=duplicate_details,
         duplicate_groups_count=len(duplicate_groups),
         collapsed_redundant_images_count=redundant_removed,
         m3_passes_before_collapse=m3_all_pass_before,
@@ -447,6 +503,18 @@ def main() -> None:
         help="Optional JSON file with list of [id_a, id_b] duplicate pairs",
     )
     parser.add_argument(
+        "--image-root",
+        type=Path,
+        default=None,
+        help="Directory containing every COCO file_name; calculates pHash duplicate pairs",
+    )
+    parser.add_argument(
+        "--phash-max-distance",
+        type=int,
+        default=8,
+        help="Maximum pHash Hamming distance for near duplicates (default: 8)",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -454,7 +522,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    pairs: list[tuple[int, int]] = []
+    if args.duplicate_pairs and args.image_root:
+        parser.error("--duplicate-pairs and --image-root are mutually exclusive")
+
+    pairs: list[tuple[int, int]] | None = None
     if args.duplicate_pairs and args.duplicate_pairs.exists():
         raw_pairs = json.loads(args.duplicate_pairs.read_text(encoding="utf-8"))
         pairs = [(p[0], p[1]) for p in raw_pairs]
@@ -463,6 +534,8 @@ def main() -> None:
         source_path=args.source,
         target_classes=args.target_classes,
         duplicate_pairs=pairs,
+        image_root=args.image_root,
+        phash_config=PerceptualHashConfig(max_distance=args.phash_max_distance),
         min_images_per_class=args.min_images,
     )
 

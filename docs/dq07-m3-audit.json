@@ -1,7 +1,7 @@
 {
   "dataset_source": "/input/coco-dataset.json",
-  "dataset_sha256": "935e9bb639bfe966fdc3b1bbe95becf07dcd09f7567079642f22a73646531936",
-  "total_images": 313,
+  "dataset_sha256": "45f2217c2d83fa953a6845ed8bcc7009e2bd297757c4d12fb7bdf847282136a7",
+  "total_images": 311,
   "total_annotations": 1038,
   "total_categories": 3,
   "classes": [
@@ -13,7 +13,7 @@
       "invalid_boxes": 0,
       "distinct_images_raw": 311,
       "distinct_images_valid_before_collapse": 311,
-      "distinct_images_valid_after_collapse": 311,
+      "distinct_images_valid_after_collapse": 310,
       "m3_threshold": 300,
       "meets_m3_before_collapse": true,
       "meets_m3_after_collapse": true,
@@ -27,7 +27,7 @@
       "invalid_boxes": 0,
       "distinct_images_raw": 309,
       "distinct_images_valid_before_collapse": 309,
-      "distinct_images_valid_after_collapse": 309,
+      "distinct_images_valid_after_collapse": 308,
       "m3_threshold": 300,
       "meets_m3_before_collapse": true,
       "meets_m3_after_collapse": true,
@@ -44,9 +44,17 @@
   "majority_class": "person",
   "minority_class": "car",
   "invalid_boxes_count": 0,
-  "duplicate_pairs_count": 0,
-  "duplicate_groups_count": 0,
-  "collapsed_redundant_images_count": 0,
+  "duplicate_pairs_count": 1,
+  "duplicate_pairs": [
+    {
+      "image_id_a": 3,
+      "image_id_b": 4,
+      "distance": 0,
+      "similarity": 1.0
+    }
+  ],
+  "duplicate_groups_count": 1,
+  "collapsed_redundant_images_count": 1,
   "m3_passes_before_collapse": true,
   "m3_passes_after_collapse": true,
   "discrepancies": []

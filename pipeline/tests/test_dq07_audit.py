@@ -5,12 +5,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+from PIL import Image
+
 from dataset_quality.analyzers.dq07_audit import (
     audit_class_imbalance,
     audit_invalid_boxes,
     audit_small_objects,
     audit_transitive_duplicate_groups,
     collapse_duplicates_per_class,
+    image_references_from_coco,
     run_independent_audit,
 )
 
@@ -162,3 +166,61 @@ def test_run_independent_audit_excludes_raw_invalid_boxes_before_production_cros
     assert report.invalid_boxes_count == 1
     assert [item.valid_boxes for item in report.classes] == [1, 1]
     assert report.discrepancies == []
+
+
+def test_image_references_from_coco_requires_every_referenced_file(tmp_path: Path) -> None:
+    """A pHash audit must fail closed instead of silently skipping a COCO image."""
+    raw_coco = {
+        "images": [
+            {"id": 1, "file_name": "present.png"},
+            {"id": 2, "file_name": "missing.png"},
+        ]
+    }
+    (tmp_path / "present.png").touch()
+
+    with pytest.raises(ValueError, match="Missing 1 COCO image files"):
+        image_references_from_coco(raw_coco, tmp_path)
+
+
+def test_run_independent_audit_calculates_phash_pairs_from_image_root(tmp_path: Path) -> None:
+    """The real-image path creates pHash pairs and feeds them to M3 collapse."""
+    image_root = tmp_path / "images"
+    image_root.mkdir()
+    first = Image.new("RGB", (64, 64), color=(20, 80, 200))
+    first.save(image_root / "first.png")
+    first.save(image_root / "second.png")
+
+    coco_path = tmp_path / "sample_coco.json"
+    coco_path.write_text(
+        json.dumps(
+            {
+                "images": [
+                    {"id": 1, "file_name": "first.png", "width": 64, "height": 64},
+                    {"id": 2, "file_name": "second.png", "width": 64, "height": 64},
+                ],
+                "categories": [
+                    {"id": 1, "name": "person"},
+                    {"id": 2, "name": "car"},
+                ],
+                "annotations": [
+                    {"id": 1, "image_id": 1, "category_id": 1, "bbox": [1, 1, 20, 20]},
+                    {"id": 2, "image_id": 1, "category_id": 2, "bbox": [1, 1, 20, 20]},
+                    {"id": 3, "image_id": 2, "category_id": 1, "bbox": [1, 1, 20, 20]},
+                    {"id": 4, "image_id": 2, "category_id": 2, "bbox": [1, 1, 20, 20]},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = run_independent_audit(
+        source_path=coco_path,
+        target_classes=["person", "car"],
+        image_root=image_root,
+        min_images_per_class=1,
+    )
+
+    assert report.duplicate_pairs_count == 1
+    assert [(pair.image_id_a, pair.image_id_b) for pair in report.duplicate_pairs] == [(1, 2)]
+    assert report.collapsed_redundant_images_count == 1
+    assert report.classes[0].distinct_images_valid_after_collapse == 1
