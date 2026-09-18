@@ -31,6 +31,15 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(5 * 1024 * 1024),
+
+  // SPEC-PIPE-001 — dónde vive el `contracts/` de Data Quality (quality.json,
+  // splits.json, versions.json) y el `quality.yaml` que la pipeline Python
+  // lee en cada corrida. En Docker Compose, ambos se montan como volumen
+  // (ver docker-compose.yml); en desarrollo local (`npm run dev`, fuera de
+  // Docker) los defaults apuntan a las rutas reales del monorepo, relativas
+  // a este paquete (`backend/`).
+  CONTRACTS_DIR: z.string().min(1).default('../contracts'),
+  QUALITY_POLICY_PATH: z.string().min(1).default('../pipeline/quality.yaml'),
 });
 
 /**

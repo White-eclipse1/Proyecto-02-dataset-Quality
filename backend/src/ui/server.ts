@@ -11,13 +11,19 @@ import {
   getCategories,
   getDashboardSummary,
   getImageFile,
+  getQualityPolicy,
+  getQualityReport,
+  getSplitReport,
+  getVersionHistory,
   idParamSchema,
   imageSearchSchema,
   initializeApplication,
   NotFoundError,
+  qualityPolicyUpdateSchema,
   searchImages,
   setImageStatus,
   updateAnnotation,
+  updateQualityPolicy,
   uploadImage,
   ValidationError,
 } from '../logic/index.js';
@@ -306,6 +312,70 @@ app.get('/dashboard/summary', async (_req, res) => {
     res.status(200).json(summary);
   } catch (error) {
     sendError(res, error, 'Error al calcular las métricas del dashboard.');
+  }
+});
+
+/**
+ * SPEC-PIPE-001 — Contratos de Data Quality, tal como los deja la pipeline
+ * Python en `contracts/` (ver `env.CONTRACTS_DIR`). Solo lectura: un 404 con
+ * mensaje explícito significa que la pipeline todavía no ha corrido.
+ */
+app.get('/quality-report', async (_req, res) => {
+  try {
+    res.status(200).json(await getQualityReport());
+  } catch (error) {
+    sendError(res, error, 'Error al leer el reporte de la quality gate.');
+  }
+});
+
+app.get('/split-report', async (_req, res) => {
+  try {
+    res.status(200).json(await getSplitReport());
+  } catch (error) {
+    sendError(res, error, 'Error al leer el reporte de splits.');
+  }
+});
+
+app.get('/version-history', async (_req, res) => {
+  try {
+    res.status(200).json(await getVersionHistory());
+  } catch (error) {
+    sendError(res, error, 'Error al leer el historial de versiones.');
+  }
+});
+
+/**
+ * SPEC-PIPE-001 — Política editable de la Quality Gate
+ * (`pipeline/quality.yaml`, ver `env.QUALITY_POLICY_PATH`).
+ *
+ * GET devuelve la política actual. PUT valida la edición de Settings
+ * (`applyQualityPolicyUpdate` en la capa Logic: mismo conjunto de checks que
+ * ya existían, `min_images_per_class` sigue siendo válido) y, solo si pasa,
+ * la escribe a disco — eso es, literalmente, lo que hace que la siguiente
+ * corrida de `dvc repro` use el nuevo valor.
+ */
+app.get('/quality-policy', async (_req, res) => {
+  try {
+    res.status(200).json(await getQualityPolicy());
+  } catch (error) {
+    sendError(res, error, 'Error al leer la política de la quality gate.');
+  }
+});
+
+app.put('/quality-policy', async (req, res) => {
+  const parsed = qualityPolicyUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: parsed.error.issues[0]?.message ?? 'Body inválido para actualizar la política.',
+    });
+    return;
+  }
+
+  try {
+    const updated = await updateQualityPolicy(parsed.data);
+    res.status(200).json(updated);
+  } catch (error) {
+    sendError(res, error, 'No se pudo actualizar la política de la quality gate.');
   }
 });
 
