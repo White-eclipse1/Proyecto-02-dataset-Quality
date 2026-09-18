@@ -55,9 +55,12 @@ desarrollo local):
 docker compose up --build
 ```
 
-Esto levanta tres servicios -- **no** incluye el pipeline de Python, que
-vive detrás de un profile aparte (ver [Pipeline (Python)](#pipeline-python)
-más abajo):
+Esto levanta los cuatro servicios por defecto (`mariadb`, `minio`, `backend`
+y `frontend`, ver `docker-compose.yml`) -- **no** incluye el pipeline de
+Python, que vive detrás de un profile aparte (ver
+[Pipeline (Python)](#pipeline-python) más abajo). De esos cuatro, tres
+exponen una URL a la que entrar desde el navegador (MariaDB no tiene UI
+propia, solo la usa `backend` internamente):
 
 - Web App: http://localhost:8080
 - API (backend): http://localhost:3100
