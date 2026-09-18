@@ -53,13 +53,16 @@ module "data" {
   }
 }
 
-# Structural parity with prod (OPS-08) — validate-only here. DEV's actual
-# object storage is MinIO (see pipeline/.dvc/config), not S3; these never
-# get applied in this environment.
+# Applied for real (see infra/README.md). DEV's actual DVC remote is still
+# MinIO (see pipeline/.dvc/config) — wiring DVC itself to this bucket is
+# OPS-07's job, not this ticket's. `dev`/`prod` currently share one AWS
+# account, so the environment must be part of the bucket name — otherwise
+# both environments compute the same global S3 name and the second `apply`
+# collides with the first (caught in OPS-08 PR review).
 module "dvc_cache" {
   source = "../../modules/storage"
 
-  bucket_name        = "dvc-cache-${data.aws_caller_identity.current.account_id}"
+  bucket_name        = "dvc-cache-dev-${data.aws_caller_identity.current.account_id}"
   enable_versioning  = true
   enable_object_lock = false
 
@@ -71,7 +74,7 @@ module "dvc_cache" {
 module "dataset_releases" {
   source = "../../modules/storage"
 
-  bucket_name        = "dataset-releases-${data.aws_caller_identity.current.account_id}"
+  bucket_name        = "dataset-releases-dev-${data.aws_caller_identity.current.account_id}"
   enable_versioning  = true
   enable_object_lock = true
 
