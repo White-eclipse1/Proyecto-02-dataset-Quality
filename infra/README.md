@@ -1,4 +1,4 @@
-# Infrastructure (OPS-05 foundation, completed in OPS-08)
+# Infrastructure (OPS-05 foundation, completed in OPS-08, extended in OPS-07)
 
 Terraform for the dataset-quality pipeline's AWS infrastructure. Laid out as reusable modules under `modules/`, composed per environment under `environments/{dev,prod}`.
 
@@ -18,9 +18,25 @@ Terraform for the dataset-quality pipeline's AWS infrastructure. Laid out as reu
 
 The bucket names above are environment-qualified (`-dev-`/`-prod-`) precisely because `dev` and `prod` share one AWS account for now: without the environment segment both environments' `storage` module calls would compute the identical global S3 bucket name, and applying the second environment would fail trying to create a bucket the first environment's state already owns. This was caught in OPS-08 PR review and fixed before `prod` was ever applied — `dev`'s buckets were renamed (`terraform apply` destroys and recreates them under the new name; safe here since nothing had been pushed into them yet, DVC's DEV remote is still MinIO).
 
-**DVC itself is not wired to these buckets yet, and the GitHub OIDC role has no S3 permissions** — that's deliberately out of this ticket's scope. OPS-08's own Acceptance Criteria (issue #31) only ask for the S3 resources/endpoint/backend/locking to exist and for the Quality Gate to gate the pipeline, both done and verified above. Actually pointing PROD's DVC remote at `dataset-releases`, giving the OIDC role permission to publish, and the DEV/PROD content-hash comparison are [OPS-07](https://github.com/White-eclipse1/Proyecto-02-dataset-Quality/issues/30)'s explicit scope — a separate, still-open ticket, blocked only by OPS-04/OPS-05 (both closed already).
+Wiring DVC to these buckets, giving the OIDC role S3 permissions, and the DEV/PROD content-hash comparison were deliberately left out of OPS-08 — that's [OPS-07](https://github.com/White-eclipse1/Proyecto-02-dataset-Quality/issues/30)'s explicit scope, and it's what the section below covers.
 
-`prod` hasn't been touched — it assumes a separate AWS account, which is why it has its own `github-oidc` provider/role rather than sharing dev's (a single AWS account can only have one GitHub OIDC provider per URL; two independent accounts each need their own), and its own `dvc_cache`/`dataset_releases` bucket calls stay validate-only (`terraform fmt`, `terraform init -backend=false`, `terraform validate` all pass, nothing applied). Its state, once migrated, will live in the *same* bootstrap bucket as dev only because this project has one AWS account total right now — a real multi-account rollout would give prod its own backend entirely.
+`prod` assumes a separate AWS account eventually, which is why it has its own `github-oidc` provider/role rather than sharing dev's (a single AWS account can only have one GitHub OIDC provider per URL; two independent accounts each need their own). Its `network`/`compute`/`data` stay validate-only. Its `dvc_cache`/`dataset_releases` storage modules are applied for real as of OPS-07 (see below) — everything else in `prod` is still just `terraform fmt`/`init -backend=false`/`validate`, nothing else `apply`'d. Its state lives in the *same* bootstrap bucket as dev only because this project has one AWS account total right now — a real multi-account rollout would give prod its own backend entirely.
+
+## OPS-07: PROD S3 remote and the release workflow
+
+**PROD DVC remote:** `pipeline/.dvc/config` has a `prod` remote (`s3://dvc-cache-prod-<account_id>`, real AWS S3) alongside the untouched `dev` remote (MinIO). DVC's cache is content-addressed, so pushing the same local cache to both remotes produces byte-identical objects by construction — see `pipeline/README.md`'s "PROD remote and hash consistency" section for the real verification procedure and why it's a local, not CI, step (GitHub-hosted runners can't reach docker-compose's MinIO).
+
+**OIDC S3 permissions:** the `github-oidc` module only supports attaching pre-made AWS-managed policy ARNs (`for_each` over `managed_policy_arns`) — there's no inline-policy mechanism in it. Since we need a *custom*, tightly-scoped policy (not an AWS-managed one), `environments/dev/main.tf` now defines its own `aws_iam_policy` (built from an `aws_iam_policy_document` data source, scoped to exactly `s3:ListBucket`/`GetObject`/`PutObject` on the 4 real bucket ARNs — `dvc-cache`/`dataset-releases` × `dev`/`prod` — never a broad managed policy) and attaches it directly to the same real role via `aws_iam_role_policy_attachment`. dev's role is the one used for both environments' buckets since this project has a single AWS account right now.
+
+**`.github/workflows/release.yml`** (`workflow_dispatch`-only, same reasoning as `aws-oidc-check`): proves the new IAM policy actually works — writes and reads back a real marker object in both PROD buckets via the OIDC-assumed role, then confirms the role is *denied* access to an out-of-scope bucket (the Terraform state bucket), as evidence the policy is neither too narrow nor too broad. It deliberately does not attempt `dvc push -r prod` itself — see the workflow file's own comment for why.
+
+**PROD storage buckets, applied for real:** same "apply for real when it's free" call as bootstrap/OIDC/dev's buckets — a targeted apply (not a full `prod` apply; `network`/`compute`/`data` stay untouched, no new RDS/ECS spend):
+```bash
+# In AWS CloudShell, already authenticated:
+cd Proyecto-02-dataset-Quality/infra/environments/prod
+terraform init
+terraform apply -target=module.dvc_cache -target=module.dataset_releases
+```
 
 Since `dev` runs real billable resources (RDS, an ECS cluster, S3), destroy it after grading if it's not needed to stay up (`terraform destroy` from `environments/dev`, run the same way as the applies above).
 

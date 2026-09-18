@@ -118,17 +118,26 @@ stages:
       PYTHONPATH=src python -m dataset_quality.versioning
       --coco data/interim/coco.json
       --quality-report data/interim/quality.json
+      --m3-baseline data/interim/m3_baseline.json
+      --observations data/interim/observations.json
+      --policy quality.yaml
       --dataset-version ${dataset_version}
+      --history data/version_history.json
       --output data/interim/versions.json
     deps:
       - data/interim/coco.json
       - data/interim/quality.json
       - data/interim/splits.json
+      - data/interim/m3_baseline.json
+      - data/interim/observations.json
+      - quality.yaml
       - src/dataset_quality/versioning/__main__.py
+      - src/dataset_quality/versioning/models.py
       - src/dataset_quality/analyzers/m3.py
       - src/dataset_quality/ingestion/models.py
       - src/dataset_quality/copilot/contracts.py
       - src/dataset_quality/quality_gate/models.py
+      - src/dataset_quality/quality_gate/policy.py
     params:
       - dataset_version
     outs:
