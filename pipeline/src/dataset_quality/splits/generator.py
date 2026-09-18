@@ -7,6 +7,7 @@ from collections import Counter, defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from dataset_quality.config.models import SplitConfig
 from dataset_quality.ingestion.models import CocoDataset
@@ -18,6 +19,9 @@ from dataset_quality.splits.models import (
     SplitResult,
     SplitTotals,
 )
+
+if TYPE_CHECKING:
+    from dataset_quality.quality_gate.runner import QualityGateDecision
 
 _SPLIT_NAMES: tuple[str, ...] = ("train", "val", "test")
 
@@ -42,6 +46,7 @@ def generate_splits(
     duplicate_pairs: Sequence[tuple[int, int]] | None = None,
     tolerance: float = 0.02,
     generated_at: datetime | None = None,
+    quality_gate: QualityGateDecision | None = None,
 ) -> SplitGenerationResult:
     """Partition every image in ``dataset`` into train/validation/test per ``config``.
 
@@ -65,6 +70,9 @@ def generate_splits(
     Raises ``ValueError`` if a duplicate pair references an image id that is
     not part of ``dataset``.
     """
+
+    if quality_gate is not None:
+        quality_gate.require("split")
 
     duplicate_pairs = list(duplicate_pairs or [])
     image_ids = [image.id for image in dataset.images]
