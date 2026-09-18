@@ -203,6 +203,41 @@ def test_dataset_summary_is_none_when_no_dataset_is_passed_to_evaluate_policy(
     assert report.dataset_summary is None
 
 
+def test_dataset_summary_none_serializes_as_json_null_and_round_trips(tmp_path: Path) -> None:
+    """Review fix (APP-05 PR): Pydantic serializes ``dataset_summary=None`` as a
+    literal JSON ``null`` — it does not omit the key. A consumer (the frontend
+    Zod schema) that only accepts the key being *absent* rejects this real,
+    valid output. This pins down the actual JSON shape so that contract stays
+    documented on the pipeline side too.
+    """
+
+    policy_path = tmp_path / "quality.yaml"
+    policy_path.write_text(
+        """min_images_per_class:
+  label: Minimum images per class
+  threshold: 300
+  severity: fail
+  comparison: min
+  unit: images
+""",
+        encoding="utf-8",
+    )
+
+    report = evaluate_policy(
+        load_policy(policy_path),
+        observations={"min_images_per_class": 2},
+        dataset_version="v-test",
+    )
+
+    payload = json.loads(report.model_dump_json())
+    assert "dataset_summary" in payload
+    assert payload["dataset_summary"] is None
+
+    # And it must still round-trip: a consumer that stores/replays this exact
+    # JSON should be able to load it back into a QualityReport.
+    assert QualityReport.model_validate(payload).dataset_summary is None
+
+
 def test_quality_dataset_summary_rejects_fields_outside_the_contract() -> None:
     with pytest.raises(ValidationError, match="extra"):
         QualityDatasetSummary.model_validate(

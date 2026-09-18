@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { qualityReportSchema } from "../src/lib/contracts/schemas";
 import { AnalyzersPage } from "../src/pages/dataset/Analyzers";
 import { OverviewPage } from "../src/pages/dataset/Overview";
 import { SettingsPage } from "../src/pages/dataset/Settings";
@@ -167,6 +168,23 @@ describe("Analyzers (APP-05)", () => {
     expect(await screen.findByText(/no (est[aá] disponible|hay datos)/i)).toBeInTheDocument();
     // Nunca debe mostrar un badge pass/warn/fail para un check que no existe.
     expect(screen.queryByText(/^pass$/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("qualityReportSchema (APP-05 review fix)", () => {
+  it("acepta dataset_summary: null, no solo ausente (Pydantic serializa None como null)", () => {
+    // Cuando evaluate_policy() corre sin un CocoDataset (el caso normal hasta
+    // que exista APP-07), el pipeline real produce "dataset_summary": null en
+    // el JSON — Pydantic no omite el campo, lo serializa como null. El
+    // esquema debe aceptar esta salida real, no solo la ausencia de la llave.
+    const payloadWithNullSummary = {
+      ...BASE_QUALITY_REPORT,
+      dataset_summary: null,
+    };
+
+    const result = qualityReportSchema.safeParse(payloadWithNullSummary);
+
+    expect(result.success).toBe(true);
   });
 });
 
