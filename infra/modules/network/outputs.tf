@@ -15,6 +15,10 @@ output "private_subnet_ids" {
 }
 
 output "private_route_table_id" {
-  description = "Exposed so OPS-08 can attach the S3 Gateway Endpoint route without editing this module."
+  description = "The route table the S3 Gateway Endpoint below is attached to."
   value       = aws_route_table.private.id
+}
+
+output "s3_endpoint_id" {
+  value = aws_vpc_endpoint.s3.id
 }
