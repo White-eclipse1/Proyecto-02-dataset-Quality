@@ -20,6 +20,15 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api/, ""),
       },
+      // APP-10: el Dataset Copilot es un servicio Python aparte (no una ruta
+      // del backend Node), servido localmente con
+      // `python -m dataset_quality.copilot` desde pipeline/ (puerto 8100 por
+      // default, ver Settings.copilot_port).
+      "/copilot": {
+        target: "http://localhost:8100",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/copilot/, ""),
+      },
     },
   },
 });

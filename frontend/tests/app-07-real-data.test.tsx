@@ -21,6 +21,12 @@ import { VersionsPage } from "../src/pages/dataset/Versions";
  *   /quality-policy con el conjunto COMPLETO de checks (spec regla 5), y
  *   refleja tanto el éxito como un rechazo del backend (p. ej. bajar
  *   min_images_per_class de 300, spec regla 6).
+ *
+ * Copilot (APP-10) ya no entra en el describe.each de arriba: a diferencia
+ * de las otras cinco pantallas, deja de hacer fetch al montar -- ahora es un
+ * chat real que solo llama a POST /copilot/query cuando el usuario manda una
+ * pregunta (ver Copilot.tsx y lib/api/copilot.ts). Sus propios tests están
+ * más abajo, junto a los de Settings.
  */
 
 const QUALITY_REPORT_FIXTURE = {
@@ -120,7 +126,6 @@ describe.each([
   { name: "Analyzers", Page: AnalyzersPage, route: "quality-report" },
   { name: "Splits", Page: SplitsPage, route: "split-report" },
   { name: "Versions", Page: VersionsPage, route: "version-history" },
-  { name: "Copilot", Page: CopilotPage, route: "quality-report" },
 ])("$name pide datos reales de la pipeline (APP-07)", ({ Page, route }) => {
   it(`hace fetch a /${route}, no a /contracts/*.json`, async () => {
     const fetchMock = mockFetchByRoute({
@@ -232,5 +237,102 @@ describe("Settings persiste contra /quality-policy (APP-07)", () => {
     fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
 
     expect(await screen.findByText(/no puede bajar de 300/i)).toBeInTheDocument();
+  });
+});
+
+describe("Copilot chat real contra POST /copilot/query (APP-10)", () => {
+  async function askQuestion(question: string) {
+    const textbox = screen.getByLabelText(/pregunta para el copilot/i);
+    fireEvent.change(textbox, { target: { value: question } });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+  }
+
+  it("manda la pregunta a POST /copilot/query y muestra la respuesta con su versión de dataset y tools_used", async () => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      expect(url).toContain("/copilot/query");
+      expect(init?.method).toBe("POST");
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          answer: "El release no está bloqueado.",
+          dataset_version: "v1.0.0",
+          tools_used: ["get_release_status"],
+        }),
+      } as Response);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter>
+        <CopilotPage />
+      </MemoryRouter>
+    );
+
+    await askQuestion("¿el release está bloqueado?");
+
+    expect(await screen.findByText("El release no está bloqueado.")).toBeInTheDocument();
+    expect(screen.getByText(/dataset v1\.0\.0/i)).toBeInTheDocument();
+    expect(screen.getByText("get_release_status")).toBeInTheDocument();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ question: "¿el release está bloqueado?" });
+  });
+
+  it("no inventa una versión de dataset cuando el agente respondió sin invocar tools (dataset_version: null)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            answer: "No tengo suficiente información.",
+            dataset_version: null,
+            tools_used: [],
+          }),
+        } as Response)
+      )
+    );
+
+    render(
+      <MemoryRouter>
+        <CopilotPage />
+      </MemoryRouter>
+    );
+
+    await askQuestion("¿cuántos elefantes hay en el dataset?");
+
+    expect(await screen.findByText("No tengo suficiente información.")).toBeInTheDocument();
+    // La insignia de versión ("dataset v1.0.0", ver ChatBubble en Copilot.tsx)
+    // no debe aparecer -- solo el encabezado fijo de la pantalla menciona
+    // "Dataset Copilot", que no coincide con este patrón más específico.
+    expect(screen.queryByText(/^dataset v/i)).not.toBeInTheDocument();
+  });
+
+  it("muestra un mensaje de error corto (nunca un traceback) cuando el provider falla (502)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve({
+          ok: false,
+          status: 502,
+          json: async () => ({ error: "El proveedor del Copilot no respondió. Intenta de nuevo." }),
+        } as Response)
+      )
+    );
+
+    render(
+      <MemoryRouter>
+        <CopilotPage />
+      </MemoryRouter>
+    );
+
+    await askQuestion("¿está bloqueado el release?");
+
+    expect(
+      await screen.findByText("El proveedor del Copilot no respondió. Intenta de nuevo.")
+    ).toBeInTheDocument();
   });
 });
