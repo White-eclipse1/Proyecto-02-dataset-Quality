@@ -80,8 +80,7 @@ async def answer_question(
 
         if not turn.tool_calls:
             raise CopilotProviderError(
-                "The Copilot's language model provider returned neither an answer "
-                "nor a tool call."
+                "The Copilot's language model provider returned neither an answer nor a tool call."
             )
 
         for call in turn.tool_calls:

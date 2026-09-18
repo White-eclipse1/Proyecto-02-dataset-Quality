@@ -68,9 +68,7 @@ def _with_evidence(
     offending_samples = evidence.get("offending_samples", [])
     if not isinstance(details, dict) or not isinstance(offending_samples, list):
         raise ValueError(f"evidence for quality check {check.id!r} has an invalid shape")
-    return check.model_copy(
-        update={"details": details, "offending_samples": offending_samples}
-    )
+    return check.model_copy(update={"details": details, "offending_samples": offending_samples})
 
 
 def main() -> int:
