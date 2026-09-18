@@ -128,7 +128,19 @@ def tool_specs_from_server(server: MCPServer) -> list[dict]:
 
 
 def default_contracts_dir(repo_root: Path | None = None) -> Path:
-    """Default ``contracts/`` location: a sibling of ``pipeline/`` at the repo root."""
+    """Default location of the pipeline's real output: ``pipeline/data/interim/``.
+
+    Review finding (APP-10 smoke test, same bug class as Mau's APP-07 review
+    on the Node backend, SPEC-PIPE-001): this used to default to repo-root
+    ``contracts/`` -- the versioned APP-01/APP-05 mock -- instead of
+    ``pipeline/data/interim/``, where ``pipeline/dvc.yaml``'s
+    ``quality_gate``/``split``/``release`` stages actually write
+    quality.json/splits.json/versions.json. With the old default, running
+    `dvc repro` never changed what the Copilot could see, exactly like it
+    never changed what the Web App displayed before the APP-07 fix. See
+    contracts/README.md, "Reconciliación con APP-07", for the Node-side
+    counterpart of this same fix.
+    """
 
     root = repo_root or Path(__file__).resolve().parents[4]
-    return root / "contracts"
+    return root / "pipeline" / "data" / "interim"
