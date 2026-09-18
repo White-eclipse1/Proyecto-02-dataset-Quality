@@ -46,6 +46,11 @@ para `car`.
 
 ## Estado de validación
 
-Los valores fueron auditados directamente contra la exportación oficial. La ejecución del
-CLI, Pytest y Ruff bajo Docker/Python 3.12 queda pendiente porque Docker Desktop estaba
-apagado al preparar este reporte; no se debe cerrar DQ-03 hasta ejecutar esa validación.
+Validado en Docker con Python 3.12.14 el 2026-09-17:
+
+- Pytest: 45 pruebas aprobadas.
+- Ruff: `All checks passed!`.
+- CLI M3: reprodujo el SHA-256 y todos los valores de esta tabla desde la exportación
+  montada como solo lectura.
+
+La evidencia ejecutable confirma que el reporte corresponde a la exportación oficial.
