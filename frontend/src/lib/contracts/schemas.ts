@@ -13,6 +13,8 @@ import { z } from "zod";
 const severitySchema = z.enum(["warn", "fail"]);
 const checkStatusSchema = z.enum(["pass", "warn", "fail"]);
 
+export type Severity = z.infer<typeof severitySchema>;
+
 export const qualityCheckSchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -25,14 +27,26 @@ export const qualityCheckSchema = z.object({
   offending_samples: z.array(z.record(z.string(), z.unknown())),
 });
 
+// APP-05: dataset-level totals for the Overview screen. Optional to mirror
+// the real `QualityReport.dataset_summary` (pipeline), which stays `None`
+// until a full `CocoDataset` is evaluated — see `contracts/README.md`,
+// "Reconciliación con APP-05".
+export const datasetSummarySchema = z.object({
+  total_images: z.number(),
+  total_bounding_boxes: z.number(),
+  total_categories: z.number(),
+});
+
 export const qualityReportSchema = z.object({
   dataset_version: z.string(),
   generated_at: z.string(),
   overall_status: checkStatusSchema,
+  dataset_summary: datasetSummarySchema.optional(),
   checks: z.array(qualityCheckSchema),
 });
 
 export type QualityCheck = z.infer<typeof qualityCheckSchema>;
+export type QualityDatasetSummary = z.infer<typeof datasetSummarySchema>;
 export type QualityReport = z.infer<typeof qualityReportSchema>;
 
 const splitCountsSchema = z.object({

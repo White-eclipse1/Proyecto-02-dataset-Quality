@@ -116,13 +116,54 @@ seguimiento (fuera de este PR) para reemplazar `SplitsSummary` por el
 Mientras tanto, ninguna herramienta del Copilot deja de funcionar contra
 `main`.
 
-## Pendiente (fuera de alcance de APP-01 / APP-04 / APP-06)
+## Reconciliación con APP-05
+
+`APP-05` implementó las pantallas del dashboard (Overview, Analyzers,
+Splits, Versions, Settings) contra estos contratos. Dos ajustes:
+
+- Se agregó `dataset_summary` (`total_images`, `total_bounding_boxes`,
+  `total_categories`) a `quality.json`, y el modelo real `QualityReport`
+  (`pipeline/src/dataset_quality/quality_gate/models.py`) gana el campo
+  opcional correspondiente (`QualityDatasetSummary`, `extra = "forbid"`,
+  por defecto `None`). Es opcional a propósito: ningún check por sí solo
+  trae estos totales (son del dataset completo, no de un check), y así
+  cualquier llamada existente a `evaluate_policy()` sin un `CocoDataset` a
+  la mano sigue validando igual que antes. Cuando sí se le pasa un
+  `CocoDataset` (parámetro nuevo `dataset`, opcional), `evaluate_policy()`
+  calcula el bloque a partir de `len(dataset.images)`,
+  `len(dataset.annotations)` y `len(dataset.categories)`. La pantalla
+  Overview lo consume para las cuatro cifras que pide su Acceptance
+  Criteria (imágenes, cajas, categorías, checks fallidos — este último se
+  deriva en el frontend contando `checks` con `status: "fail"`, no
+  requiere campo nuevo).
+- La pestaña "Spatial Bias" de Analyzers sigue en la UI (la pide el AC de
+  `APP-05`), pero ya no tiene datos reales que mostrar desde la
+  reconciliación con `DQ-02` (ver arriba: el check se quitó de
+  `quality.yaml`). Se muestra con un estado explícito de "no disponible"
+  en vez de datos inventados — ver `frontend/src/pages/dataset/Analyzers.tsx`.
+  Si `DQ-02` retoma `spatial_bias` más adelante, la pestaña empieza a
+  mostrar datos reales sin cambios adicionales en la Web App.
+- `Settings` habilita la edición de `threshold`/`severity` que pedía el
+  AC, pero solo en estado local de React — no hay persistencia contra
+  `quality.yaml` todavía (sigue siendo alcance de un ticket posterior, una
+  vez exista la política real editable de Data Quality). No se agregó un
+  botón "Guardar" que fingiera persistir el cambio.
+
+Verificado cargando `quality.json` con el `QualityReport` real de APP-05
+(`QualityReport.model_validate(...)`): valida sin errores, incluyendo el
+nuevo bloque `dataset_summary`
+(`pipeline/tests/test_quality_policy.py`).
+
+## Pendiente (fuera de alcance de APP-01 / APP-04 / APP-05 / APP-06)
 
 - Consumo real desde la Web App una vez exista el scaffolding de rutas
   (`APP-02`, ya completo).
 - Reemplazar las cifras mock de `splits.json` por una corrida real del
   generador de `APP-04` sobre el dataset del equipo — eso, y conectar
-  `quality.json`/`versions.json` a sus fuentes reales, es alcance de
-  `APP-07`.
+  `quality.json`/`versions.json` a sus fuentes reales (incluyendo
+  `dataset_summary`), es alcance de `APP-07`.
 - Reemplazar `SplitsSummary` (APP-06) por el `SplitResult` real de
   `APP-04` en `copilot/contracts.py`, ahora que esa rama ya está en `main`.
+- Persistencia real de ediciones de `Settings` contra `quality.yaml`, y
+  reincorporar `spatial_bias` a la política si Data Quality decide
+  retomarlo.

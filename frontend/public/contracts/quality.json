@@ -2,6 +2,11 @@
   "dataset_version": "v0.2.0-mock",
   "generated_at": "2026-09-15T22:10:00Z",
   "overall_status": "fail",
+  "dataset_summary": {
+    "total_images": 1520,
+    "total_bounding_boxes": 2143,
+    "total_categories": 3
+  },
   "checks": [
     {
       "id": "min_images_per_class",
