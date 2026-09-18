@@ -80,8 +80,7 @@ async def answer_question(
 
         if not turn.tool_calls:
             raise CopilotProviderError(
-                "The Copilot's language model provider returned neither an answer "
-                "nor a tool call."
+                "The Copilot's language model provider returned neither an answer nor a tool call."
             )
 
         for call in turn.tool_calls:
@@ -95,7 +94,17 @@ async def answer_question(
             payload = json.loads(result.content[0].text)
             tools_used.append(call.name)
             if dataset_version is None and isinstance(payload, dict):
-                dataset_version = payload.get("dataset_version")
+                # Every tool payload names the dataset it describes, but not
+                # under the same key: get_quality_report / get_split_report /
+                # get_release_blockers all echo the contract's own
+                # `dataset_version` field, while get_version_history's
+                # payload is VersionsReport.model_dump(), which only has
+                # `current_version` at the top level (see
+                # copilot/contracts.py). Falling back to `current_version`
+                # is what makes "dataset version appears in responses" true
+                # for that tool too -- see the review fix in
+                # tests/test_app08_adversarial.py.
+                dataset_version = payload.get("dataset_version") or payload.get("current_version")
             history.append({"tool": call.name, "arguments": call.arguments, "result": payload})
 
     raise CopilotProviderError(
