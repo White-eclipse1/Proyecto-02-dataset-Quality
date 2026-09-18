@@ -28,7 +28,7 @@ from dataset_quality.analyzers.dq04 import (
     analyze_small_objects,
 )
 from dataset_quality.analyzers.dq05 import detect_invalid_boxes
-from dataset_quality.analyzers.m3 import load_coco_dataset
+from dataset_quality.ingestion.models import CocoDataset
 
 # ---------------------------------------------------------------------------
 # Audit Data Models
@@ -367,7 +367,17 @@ def run_independent_audit(
         )
 
     # Cross-check small objects with DQ-04
-    dataset = load_coco_dataset(source_path)
+    dataset = CocoDataset.model_validate(
+        {
+            **raw_coco,
+            "annotations": [
+                annotation
+                for annotation in raw_coco.get("annotations", [])
+                if isinstance(annotation, dict)
+                and int(annotation.get("id", -1)) not in invalid_ann_ids
+            ],
+        }
+    )
     prod_small = analyze_small_objects(
         dataset, SmallObjectsConfig(max_width=32, max_height=32, sample_limit=10)
     )

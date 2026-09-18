@@ -124,3 +124,41 @@ def test_run_independent_audit_cross_checks_with_production(tmp_path: Path) -> N
     assert report.small_objects_count == 1  # 20x20 is small
     assert report.m3_passes_before_collapse is True
     assert report.discrepancies == []
+
+
+def test_run_independent_audit_excludes_raw_invalid_boxes_before_production_cross_check(
+    tmp_path: Path,
+) -> None:
+    """The audit must handle raw invalid boxes without strict Pydantic aborting it."""
+
+    coco_path = tmp_path / "invalid_box_coco.json"
+    coco_path.write_text(
+        json.dumps(
+            {
+                "images": [
+                    {"id": 1, "file_name": "one.jpg", "width": 100, "height": 100},
+                    {"id": 2, "file_name": "two.jpg", "width": 100, "height": 100},
+                ],
+                "categories": [
+                    {"id": 1, "name": "person"},
+                    {"id": 2, "name": "car"},
+                ],
+                "annotations": [
+                    {"id": 1, "image_id": 1, "category_id": 1, "bbox": [10, 10, 20, 20]},
+                    {"id": 2, "image_id": 1, "category_id": 1, "bbox": [10, 10, -1, 20]},
+                    {"id": 3, "image_id": 2, "category_id": 2, "bbox": [20, 20, 20, 20]},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = run_independent_audit(
+        source_path=coco_path,
+        target_classes=["person", "car"],
+        min_images_per_class=1,
+    )
+
+    assert report.invalid_boxes_count == 1
+    assert [item.valid_boxes for item in report.classes] == [1, 1]
+    assert report.discrepancies == []
