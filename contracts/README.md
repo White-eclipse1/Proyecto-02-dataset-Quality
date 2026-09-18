@@ -173,8 +173,12 @@ este directorio ni `pipeline/quality.yaml` — solo el Copilot (Python,
 `backend/specs/pipeline-contracts.spec.md`, SPEC-PIPE-001):
 
 - `GET /quality-report`, `GET /split-report`, `GET /version-history` leen
-  `contracts/quality.json` / `splits.json` / `versions.json` y los
-  devuelven **tal cual** — el backend NO revalida su forma contra un
+  `pipeline/data/interim/quality.json` / `splits.json` / `versions.json`
+  (la salida real de los stages `quality_gate`/`split`/`release` de
+  `pipeline/dvc.yaml` — **no** `contracts/quality.json` etc. en la raíz del
+  repo, que sigue siendo el mock versionado de APP-01/APP-05; ver
+  "Corrección de revisión" abajo) y los devuelven **tal cual** — el backend
+  NO revalida su forma contra un
   esquema propio. La forma ya está garantizada por los modelos Pydantic
   `extra = "forbid"` de la pipeline (documentados en las reconciliaciones
   de arriba) y el frontend la valida con Zod al recibirla
@@ -201,9 +205,9 @@ este directorio ni `pipeline/quality.yaml` — solo el Copilot (Python,
   con que la pipeline lo vuelva a validar en la siguiente corrida, porque
   para entonces `Settings` ya habría mostrado "guardado" con éxito.
 
-En `docker-compose.yml`, el servicio `backend` monta `./contracts` como
-volumen de solo lectura y `./pipeline/quality.yaml` de lectura-escritura
-(mismas rutas que usa la pipeline), configurables vía `CONTRACTS_DIR` /
+En `docker-compose.yml`, el servicio `backend` monta `./pipeline/data/interim`
+como volumen de solo lectura y `./pipeline/quality.yaml` de lectura-escritura
+(mismas rutas que usa la pipeline), configurables vía `PIPELINE_OUTPUT_DIR` /
 `QUALITY_POLICY_PATH` (ver `.env.example` / `.env.production.example`).
 
 Del lado del frontend, `Overview`, `Analyzers`, `Splits`, `Versions` y
@@ -224,13 +228,66 @@ histórica de la forma mock original y para no invalidar `contracts-sync.test.ts
 (que sigue verificando que la copia servida coincida con este directorio).
 Retirarlos por completo, si se decide, es un cambio de limpieza aparte.
 
-Verificado con `npm test` en `backend/` (86/86, incluyendo 19 pruebas
-nuevas de esta capa) y en `frontend/` (25/25, incluyendo el reemplazo de
-mocks por rutas reales y la persistencia de `Settings`), `tsc --noEmit` y
-`biome check` limpios en ambos paquetes, y una verificación de mutación en
-el invariante de `min_images_per_class` (backend) y en el armado del body
-completo de `PUT` (frontend): sabotear cada regla hace fallar exactamente
-la prueba que la cubre, nada más.
+Verificado con `npm test` en `backend/` (87/87, incluyendo las pruebas de
+esta capa y la de la corrección de revisión de abajo) y en `frontend/`
+(25/25, incluyendo el reemplazo de mocks por rutas reales y la
+persistencia de `Settings`), `tsc --noEmit` y `biome check` limpios en
+ambos paquetes, y verificaciones de mutación en el invariante de
+`min_images_per_class` (backend) y en el armado del body completo de
+`PUT` (frontend): sabotear cada regla hace fallar exactamente la prueba
+que la cubre, nada más.
+
+### Corrección de revisión (Mau)
+
+La primera versión de este PR conectó el backend a `contracts/quality.json`
+/ `splits.json` / `versions.json` (raíz del repo) — el mismo directorio que
+este README documenta arriba como "archivos de ejemplo (mock)". Mau lo
+marcó como bloqueante en la revisión: **`pipeline/dvc.yaml` nunca escribe
+ahí**. Los stages reales (`quality_gate`, `split`, `release`) escriben en
+`pipeline/data/interim/quality.json` / `splits.json` / `versions.json` (ver
+sus bloques `outs:`), así que correr `dvc repro` no cambiaba nada de lo que
+mostraba la Web App — el Agent Test de APP-07 ("Settings afecta la
+siguiente corrida del Quality Gate... y la Web App refleja el resultado")
+fallaba en la práctica para los tres `GET` de solo lectura.
+
+De las dos opciones que Mau propuso (conectar el backend directo a esa
+salida, o agregar un paso que publique los resultados reales en
+`contracts/`), se eligió la primera: apuntar `env.CONTRACTS_DIR` — renombrado
+a `env.PIPELINE_OUTPUT_DIR` para que el nombre ya no sugiera `contracts/` —
+directamente a `pipeline/data/interim/`. Se descartó la segunda porque
+hubiera significado agregar un stage nuevo a `pipeline/dvc.yaml` (fuera del
+código que este PR toca, y terreno de Data Quality/MLOps) solo para
+mantener viva una copia intermedia que ya no cumple ningún propósito una
+vez que el backend puede leer la salida real directamente.
+
+Cambios: `backend/src/config/env.ts` (`PIPELINE_OUTPUT_DIR`, default
+`../pipeline/data/interim`), `pipeline-contracts.service.ts` (mismo
+renombre), `docker-compose.yml` (el volumen del servicio `backend` ahora
+monta `./pipeline/data/interim` en vez de `./contracts`), `.env.example` /
+`.env.production.example`, y `backend/specs/pipeline-contracts.spec.md` /
+`backend/features/pipeline-contracts.feature`. `GET`/`PUT /quality-policy`
+no cambiaron — ya apuntaban correctamente a `pipeline/quality.yaml`, que sí
+es un archivo fuente real (no una salida de `dvc repro`); Mau no señaló
+ningún problema ahí.
+
+Reproducido primero como prueba en rojo (`tests/pipeline-contracts.test.ts`,
+"el default resuelve a pipeline/data/interim, no a contracts/"): con el
+default viejo, la prueba fallaba porque `env.CONTRACTS_DIR` ya no existía
+tras el renombre; con el fix, pasa confirmando que el default resuelve
+dentro de `pipeline/data/interim/` y no termina en `contracts`.
+
+El Copilot (Python, `copilot/store.py`) tiene el mismo default apuntando a
+`contracts/` (`copilot/agent.py::default_contracts_dir`) y por lo tanto el
+mismo problema de fondo — pero es código de APP-06, ya mergeado a `main`
+antes de este PR, y fuera del Acceptance Criteria de APP-07 (que es sobre
+la Web App). Queda anotado en "Pendiente" abajo en vez de tocarse aquí.
+Tampoco se tocó el servicio `pipeline` de `docker-compose.yml`: no tiene
+ningún volumen para `data/`, así que un `dvc repro` corrido vía
+`docker compose --profile pipeline run` todavía no persiste su salida al
+host (sí funciona corriendo la pipeline localmente, como hace el equipo
+hoy) — ese es el `pipeline` service completo, terreno de OPS-04, y también
+queda anotado en "Pendiente" en vez de modificarse sin acuerdo con ese
+ticket.
 
 ## Pendiente (fuera de alcance de APP-01 / APP-04 / APP-05 / APP-06 / APP-07)
 
@@ -246,3 +303,13 @@ la prueba que la cubre, nada más.
 - Decidir si `useContractFetch.ts` y `frontend/public/contracts/*.json`
   se retiran del todo ahora que ninguna pantalla los usa (ver
   "Reconciliación con APP-07").
+- El Copilot (`copilot/agent.py::default_contracts_dir`, APP-06) sigue
+  apuntando por defecto a `contracts/` (repo root) en vez de
+  `pipeline/data/interim/` — mismo problema de fondo que la corrección de
+  revisión de arriba, pero del lado de la pipeline Python, no de la Web
+  App. `dvc repro` tampoco actualiza lo que responde el Copilot hoy.
+- El servicio `pipeline` de `docker-compose.yml` no tiene volumen para
+  `data/`: un `dvc repro` corrido vía
+  `docker compose --profile pipeline run pipeline dvc repro` no persiste
+  su salida al host (funciona corriendo la pipeline localmente). Es
+  terreno de OPS-04.
