@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from dataset_quality.config.models import SplitConfig
 from dataset_quality.ingestion.models import CocoAnnotation, CocoCategory, CocoDataset, CocoImage
-from dataset_quality.splits.generator import generate_splits
+from dataset_quality.splits.generator import _SPLIT_NAMES, generate_splits
 from dataset_quality.splits.models import SplitResult
 
 DEFAULT_CONFIG = SplitConfig(train=0.70, val=0.15, test=0.15, seed=42)
@@ -188,3 +188,120 @@ def test_versioned_splits_contract_example_validates_with_pydantic() -> None:
     assert report.seed == 42
     assert report.leakage_check.status == "pass"
     assert report.reproducibility_check.status == "pass"
+
+
+# ---------------------------------------------------------------------------
+# Review fix (Mau, PR #34): the assignment only balanced *total* image count,
+# so a minority class could end up lopsided across splits even while overall
+# totals looked fine, and the coverage-completion phase could move a group
+# between val/test in a way that dropped a class a split already had. These
+# tests cover per-class stratification and coverage-safety directly, with
+# minority classes and multilabel images (an image carrying more than one
+# class at once).
+# ---------------------------------------------------------------------------
+
+
+def test_splits_are_stratified_by_class_not_just_overall_totals() -> None:
+    """A minority class's own train/val/test proportions must track the
+    configured ratios, not just the overall image totals.
+
+    seed=18 is not cherry-picked to look nice — it's a seed under which the
+    old, total-count-only balancing visibly failed this (train/val/test
+    bicycle counts of 18/1/1 against a 14/3/3 target), while still passing
+    the pre-existing "totals only" tests. The fix targets each class's own
+    deficit, so it hits 14/3/3 regardless of seed.
+    """
+    image_class_map = {
+        image_id: (["bicycle"] if image_id <= 20 else ["car"]) for image_id in range(1, 101)
+    }
+    dataset = _make_dataset(image_class_map)
+    config = SplitConfig(train=0.70, val=0.15, test=0.15, seed=18)
+
+    result = generate_splits(dataset, config, "v-test")
+
+    bicycle_by_split = {
+        split_name: getattr(result.report.class_distribution, split_name).get("bicycle", 0)
+        for split_name in _SPLIT_NAMES
+    }
+    assert sum(bicycle_by_split.values()) == 20
+    # 70/15/15 of 20 minority images -> 14/3/3, allow slack for integer/group rounding.
+    for split_name, target in (("train", 14), ("val", 3), ("test", 3)):
+        assert abs(bicycle_by_split[split_name] - target) <= 2, bicycle_by_split
+
+
+def test_multilabel_images_are_stratified_per_class_even_when_categories_overlap() -> None:
+    """An image can carry more than one class; each class's proportions must
+    still land close to the configured ratios despite the overlap.
+
+    seed=32 is, again, a seed the old total-count-only balancing visibly
+    mishandled (bicycle landed 10/4/6 against a 14/3/3 target).
+    """
+    image_class_map: dict[int, list[str]] = {}
+    for image_id in range(1, 101):
+        classes = ["car"]
+        if image_id <= 20:
+            classes.append("bicycle")
+        if image_id <= 10:
+            classes.append("truck")
+        image_class_map[image_id] = classes
+    dataset = _make_dataset(image_class_map)
+    config = SplitConfig(train=0.70, val=0.15, test=0.15, seed=32)
+
+    result = generate_splits(dataset, config, "v-test")
+
+    for class_name, total in (("bicycle", 20), ("truck", 10)):
+        by_split = {
+            split_name: getattr(result.report.class_distribution, split_name).get(class_name, 0)
+            for split_name in _SPLIT_NAMES
+        }
+        assert sum(by_split.values()) == total, (class_name, by_split)
+        for split_name, ratio in (("train", 0.70), ("val", 0.15), ("test", 0.15)):
+            target = ratio * total
+            assert abs(by_split[split_name] - target) <= 2, (class_name, split_name, by_split)
+
+
+def test_coverage_fill_does_not_drop_a_class_a_split_already_had() -> None:
+    """A multilabel group is the *only* carrier of two rare classes and is
+    already covering both in val. Filling test's coverage for either class
+    must not silently un-cover val — even though there's no other group left
+    to give test that same coverage (a genuine data-scarcity limit, not a
+    bug: val, filled first, keeps what it already had)."""
+    from dataset_quality.splits.generator import _fill_class_coverage_gaps
+
+    dataset = _make_dataset({101: ["bicycle", "truck"], 102: ["car"]})
+    category_id = {category.name: category.id for category in dataset.categories}
+    groups = {1: [101], 2: [102]}
+    image_categories = {
+        101: {category_id["bicycle"], category_id["truck"]},
+        102: {category_id["car"]},
+    }
+    assignment = {"train": [102], "val": [101], "test": []}
+    group_split = {1: "val", 2: "train"}
+
+    _fill_class_coverage_gaps(groups, group_split, assignment, image_categories, dataset)
+
+    assert 101 in assignment["val"]
+    assert 101 not in assignment["test"]
+
+
+def test_coverage_fill_still_covers_both_val_and_test_when_a_safe_donor_exists() -> None:
+    """Unlike the scarcity case above, two independent groups carry the rare
+    class here, both still sitting in train (always a safe donor) — so both
+    val and test can get their own, without touching each other."""
+    from dataset_quality.splits.generator import _fill_class_coverage_gaps
+
+    dataset = _make_dataset({101: ["bicycle"], 102: ["bicycle"], 103: ["car"]})
+    category_id = {category.name: category.id for category in dataset.categories}
+    groups = {1: [101], 2: [102], 3: [103]}
+    image_categories = {
+        101: {category_id["bicycle"]},
+        102: {category_id["bicycle"]},
+        103: {category_id["car"]},
+    }
+    assignment = {"train": [101, 102, 103], "val": [], "test": []}
+    group_split = {1: "train", 2: "train", 3: "train"}
+
+    _fill_class_coverage_gaps(groups, group_split, assignment, image_categories, dataset)
+
+    assert any(image_id in assignment["val"] for image_id in (101, 102))
+    assert any(image_id in assignment["test"] for image_id in (101, 102))
