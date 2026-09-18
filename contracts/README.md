@@ -61,6 +61,28 @@ Verificado cargando este archivo con el `QualityReport` real de DQ-02
 (`QualityReport.model_validate(...)`): valida sin errores y los 5 checks
 coinciden 1:1 con `quality.yaml`.
 
+## Reconciliación con APP-04
+
+`APP-04` implementó el generador de splits real
+(`pipeline/src/dataset_quality/splits/`) y su modelo de salida
+`SplitResult` (`pipeline/src/dataset_quality/splits/models.py`), que
+también usa `extra = "forbid"`. Se ajustó `splits.json`:
+
+- Se quitaron los campos `_contract`/`_note` del nivel superior, por la
+  misma razón que en la reconciliación de `quality.json` con DQ-02: son
+  metadata del mock, no parte de la forma real que produce el pipeline.
+- El resto del archivo (proporciones, `tolerance`, totales, distribución
+  de clases, `leakage_check`, `reproducibility_check`) ya tenía exactamente
+  la forma que `SplitResult` produce — no fue necesario cambiar nada más.
+
+Verificado cargando este archivo con `SplitResult.model_validate(...)`:
+valida sin errores (`pipeline/tests/test_splits.py`).
+
+Las cifras siguen siendo ilustrativas (mock de APP-01) — `APP-04` fija la
+forma real de la salida, pero todavía no corre contra un dataset real;
+eso es alcance de `APP-07` (conectar la Web App a las salidas reales del
+pipeline).
+
 ## Reconciliación con APP-06
 
 `APP-06` agrega el servidor MCP de solo lectura y el Dataset Copilot
@@ -70,9 +92,9 @@ están en disco — es el único I/O del Copilot (ver `copilot/store.py`).
 
 `versions.json` (Tier 5) no tenía todavía un modelo Pydantic estricto —
 `quality.json` ya lo tiene desde `DQ-02`, y `splits.json` lo obtiene en
-`APP-04` (rama `feat/app-04-stratified-splits`, aún sin mergear). `APP-06`
-define `VersionsReport` (`copilot/contracts.py`, `extra = "forbid"`) como
-el modelo real de `versions.json`, y al reconciliar se ajustó el archivo:
+`APP-04`. `APP-06` define `VersionsReport` (`copilot/contracts.py`,
+`extra = "forbid"`) como el modelo real de `versions.json`, y al
+reconciliar se ajustó el archivo:
 
 - Se quitaron los campos `_contract`/`_note` del nivel superior, igual que
   se hizo con `quality.json` en `DQ-02`: `VersionsReport` no permite campos
@@ -85,16 +107,22 @@ Verificado cargando este archivo con el `VersionsReport` real de APP-06
 (`VersionsReport.model_validate(...)`): valida sin errores
 (`tests/test_copilot.py::test_real_versions_contract_validates_with_the_new_model`).
 
-Para `splits.json`, el Copilot usa a propósito un modelo propio y más
-permisivo (`SplitsSummary`, `extra = "ignore"`) en lugar del `SplitResult`
-estricto de `APP-04`, porque esa rama todavía no está en `main` y `APP-06`
-no está bloqueado por `APP-04` en las dependencias declaradas del ticket
-(solo por `APP-01`/`DQ-02`). Queda un `TODO(APP-04 merge)` en
-`copilot/contracts.py` para reemplazarlo por el `SplitResult` real una vez
-que `feat/app-04-stratified-splits` se mergee — sin eso, ninguna
-herramienta del Copilot deja de funcionar contra `main` hoy.
+Para `splits.json`, el Copilot todavía usa a propósito un modelo propio y
+más permisivo (`SplitsSummary`, `extra = "ignore"`) en lugar del
+`SplitResult` estricto de `APP-04` — quedó así de cuando `APP-04` todavía
+no estaba en `main`. Ahora que ya se mergeó, sigue pendiente un cambio de
+seguimiento (fuera de este PR) para reemplazar `SplitsSummary` por el
+`SplitResult` real; ver el `TODO(APP-04 merge)` en `copilot/contracts.py`.
+Mientras tanto, ninguna herramienta del Copilot deja de funcionar contra
+`main`.
 
-## Pendiente (fuera de alcance de APP-01)
+## Pendiente (fuera de alcance de APP-01 / APP-04 / APP-06)
 
 - Consumo real desde la Web App una vez exista el scaffolding de rutas
-  (`APP-02`).
+  (`APP-02`, ya completo).
+- Reemplazar las cifras mock de `splits.json` por una corrida real del
+  generador de `APP-04` sobre el dataset del equipo — eso, y conectar
+  `quality.json`/`versions.json` a sus fuentes reales, es alcance de
+  `APP-07`.
+- Reemplazar `SplitsSummary` (APP-06) por el `SplitResult` real de
+  `APP-04` en `copilot/contracts.py`, ahora que esa rama ya está en `main`.

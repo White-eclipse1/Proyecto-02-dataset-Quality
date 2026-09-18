@@ -89,6 +89,7 @@ Setup local:
 ```bash
 cd pipeline
 cp .env.example .env
+python -m venv .venv && source .venv/bin/activate   # Windows: ver nota abajo
 pip install -r requirements.txt -r requirements-dev.txt
 ruff check .
 pytest
@@ -116,6 +117,7 @@ Además, en Windows conviene usar el lanzador `py` en vez de `python` a secas (p
 py -0                       # lista los Pythons instalados
 py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
+pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 También corre contenedorizado junto al resto del stack. Está detrás de un profile de Docker Compose (`pipeline`) porque hoy es solo tooling de CLI/batch — sin servidor HTTP — así que `docker compose up` sigue levantando únicamente app + MariaDB + MinIO:
