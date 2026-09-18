@@ -122,3 +122,24 @@ export const versionsReportSchema = z.object({
 
 export type DatasetVersion = z.infer<typeof datasetVersionSchema>;
 export type VersionsReport = z.infer<typeof versionsReportSchema>;
+
+// APP-07: política real de la quality gate, leída de `pipeline/quality.yaml`
+// a través de `GET /quality-policy` (backend, SPEC-PIPE-001) — no la última
+// corrida (`qualityReportSchema` arriba), sino la configuración editable que
+// usa la SIGUIENTE corrida. Misma forma plana `check_id -> {...}` que tiene
+// el YAML en disco (ver backend/specs/pipeline-contracts.spec.md, regla 3):
+// sin envoltura de nivel superior, a diferencia de `qualityCheckSchema`
+// (que además trae `id`/`status`/`observed`, campos de un reporte ya
+// corrido, que la política no tiene).
+export const qualityPolicyCheckSchema = z.object({
+  label: z.string(),
+  threshold: z.number(),
+  severity: severitySchema,
+  comparison: z.enum(["min", "max"]),
+  unit: z.string(),
+});
+
+export const qualityPolicySchema = z.record(z.string(), qualityPolicyCheckSchema);
+
+export type QualityPolicyCheck = z.infer<typeof qualityPolicyCheckSchema>;
+export type QualityPolicy = z.infer<typeof qualityPolicySchema>;

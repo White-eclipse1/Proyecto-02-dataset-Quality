@@ -188,9 +188,30 @@ describe("qualityReportSchema (APP-05 review fix)", () => {
   });
 });
 
+// APP-07: Settings ya no lee contracts/quality.json (un reporte de una
+// corrida) sino /quality-policy (la política editable, misma forma plana
+// que pipeline/quality.yaml — ver lib/contracts/schemas.ts). Este fixture
+// es intencionalmente distinto de BASE_QUALITY_REPORT.
+const BASE_QUALITY_POLICY = {
+  min_images_per_class: {
+    label: "Minimum images per class",
+    threshold: 300,
+    severity: "fail",
+    comparison: "min",
+    unit: "images",
+  },
+  class_imbalance: {
+    label: "Class imbalance ratio",
+    threshold: 3.0,
+    severity: "warn",
+    comparison: "max",
+    unit: "majority/minority ratio",
+  },
+};
+
 describe("Settings (APP-05)", () => {
   it("permite editar threshold y severity (ya no están deshabilitados)", async () => {
-    mockFetchOnce(BASE_QUALITY_REPORT);
+    mockFetchOnce(BASE_QUALITY_POLICY);
 
     render(
       <MemoryRouter>

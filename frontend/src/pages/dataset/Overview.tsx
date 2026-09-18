@@ -1,14 +1,16 @@
 import { QualityStatusBadge } from "@/components/dataset/QualityStatusBadge";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { useContractFetch } from "@/hooks/useContractFetch";
+import { useValidatedFetch } from "@/hooks/useValidatedFetch";
 import { type QualityReport, qualityReportSchema } from "@/lib/contracts/schemas";
 
 /**
  * Overview: estado del quality gate y resumen de checks, leído de
- * contracts/quality.json (mock de APP-01, ver contracts/README.md — todavía
- * no viene del pipeline real). Ningún número aquí está hardcodeado: todo
- * sale del fetch, así que cambiar el JSON público cambia lo que se ve sin
+ * GET /quality-report (backend, SPEC-PIPE-001/APP-07), que a su vez sirve
+ * contracts/quality.json tal como lo dejó la pipeline real — ya no el mock
+ * estático de APP-01 (ver contracts/README.md, "Reconciliación con APP-07").
+ * Ningún número aquí está hardcodeado: todo sale del fetch, así que la
+ * siguiente corrida de la pipeline (`dvc repro`) cambia lo que se ve sin
  * tocar este archivo.
  *
  * Las 4 cifras de resumen (imágenes, cajas, categorías, checks fallidos) y
@@ -20,7 +22,7 @@ import { type QualityReport, qualityReportSchema } from "@/lib/contracts/schemas
  * `status === "fail"`: no necesita su propio campo en el contrato.
  */
 export function OverviewPage() {
-  const report = useContractFetch("/contracts/quality.json", qualityReportSchema);
+  const report = useValidatedFetch("/quality-report", qualityReportSchema);
 
   return (
     <main className="flex-1 px-6 py-6 lg:px-10 lg:py-8">

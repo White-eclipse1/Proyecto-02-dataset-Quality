@@ -55,6 +55,24 @@ export type {
 export { searchImages } from './image-search.service.js';
 export { setImageStatus } from './image-status.service.js';
 export { deleteImage, uploadImage } from './image-upload.service.js';
+// Contratos de Data Quality: solo lectura (SPEC-PIPE-001)
+export {
+  getQualityReport,
+  getSplitReport,
+  getVersionHistory,
+} from './pipeline-contracts.service.js';
+// Política editable de la Quality Gate (SPEC-PIPE-001)
+export type {
+  QualityPolicyCheck,
+  QualityPolicyEdit,
+  QualityPolicyFile,
+  QualityPolicyUpdateInput,
+  Severity as QualityPolicySeverity,
+} from './quality-policy.builder.js';
+export { applyQualityPolicyUpdate } from './quality-policy.builder.js';
+export { getQualityPolicy, updateQualityPolicy } from './quality-policy.service.js';
+export type { QualityPolicyUpdateBody } from './quality-policy.validation.js';
+export { qualityPolicyUpdateSchema } from './quality-policy.validation.js';
 // Parser de operadores de búsqueda (SPEC-SEARCH-001)
 export type { ParsedSearchQuery, SearchOperator } from './search-query.parser.js';
 export { parseSearchQuery } from './search-query.parser.js';

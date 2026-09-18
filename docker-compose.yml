@@ -49,6 +49,24 @@ services:
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: image-annotations
       MAX_UPLOAD_SIZE_BYTES: 5242880
+      # SPEC-PIPE-001 (APP-07) — dónde el backend lee/escribe las salidas de
+      # la pipeline de Data Quality, montadas abajo desde la raíz del repo.
+      #
+      # Corrección de revisión (Mau, PR de APP-07): esto montaba antes
+      # ./contracts (el mock versionado de APP-01/APP-05) — pero
+      # pipeline/dvc.yaml escribe quality.json/splits.json/versions.json en
+      # pipeline/data/interim/, nunca en contracts/, así que `dvc repro`
+      # nunca actualizaba lo que veía la Web App. Ver contracts/README.md.
+      PIPELINE_OUTPUT_DIR: /data/pipeline-output
+      QUALITY_POLICY_PATH: /data/quality.yaml
+    volumes:
+      # Solo lectura: el backend nunca escribe quality.json/splits.json/versions.json,
+      # esos los produce la pipeline (`dvc repro`) en pipeline/data/interim/.
+      - ./pipeline/data/interim:/data/pipeline-output:ro
+      # Lectura + escritura: PUT /quality-policy escribe aquí (Settings), y
+      # es el mismo archivo que `dataset_quality.quality_gate.runner` lee en
+      # la siguiente corrida — no hay ninguna otra copia de por medio.
+      - ./pipeline/quality.yaml:/data/quality.yaml
     ports:
       - "3100:3100"
     restart: on-failure:5
