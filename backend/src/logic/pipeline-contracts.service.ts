@@ -1,7 +1,11 @@
 /**
  * SPEC-PIPE-001 — Lee los contratos de Data Quality (`quality.json`,
  * `splits.json`, `versions.json`) tal como los deja la pipeline Python en
- * `contracts/` (ver `env.CONTRACTS_DIR`).
+ * `pipeline/data/interim/` (ver `env.PIPELINE_OUTPUT_DIR`) -- la salida real
+ * de los stages `quality_gate`/`split`/`release` de `pipeline/dvc.yaml`, NO
+ * `contracts/` (repo root), que sigue siendo el mock versionado de
+ * APP-01/APP-05 y que ningún stage de la pipeline real toca (corrección de
+ * revisión, Mau, PR de APP-07 -- ver contracts/README.md).
  *
  * A propósito NO se re-valida el contenido contra un esquema aquí: la forma
  * ya está garantizada por los modelos Pydantic `extra="forbid"` del lado de
@@ -19,8 +23,8 @@ import path from 'node:path';
 import { env } from '../config/env.js';
 import { NotFoundError } from './errors.js';
 
-async function readContractJson(filename: string, contractsDir: string): Promise<unknown> {
-  const filePath = path.join(contractsDir, filename);
+async function readContractJson(filename: string, pipelineOutputDir: string): Promise<unknown> {
+  const filePath = path.join(pipelineOutputDir, filename);
 
   let raw: string;
   try {
@@ -28,7 +32,7 @@ async function readContractJson(filename: string, contractsDir: string): Promise
   } catch (error) {
     if (isEnoent(error)) {
       throw new NotFoundError(
-        `${filename} no existe todavía en ${contractsDir} — corre la pipeline (dvc repro) primero.`,
+        `${filename} no existe todavía en ${pipelineOutputDir} — corre la pipeline (dvc repro) primero.`,
       );
     }
     throw error;
@@ -44,24 +48,28 @@ function isEnoent(error: unknown): boolean {
 }
 
 /**
- * Reporte actual del Quality Gate — `contracts/quality.json`.
+ * Reporte actual del Quality Gate — `pipeline/data/interim/quality.json`.
  *
- * `contractsDir` por defecto es `env.CONTRACTS_DIR`; el parámetro existe
- * para poder probar esta función contra un directorio temporal sin fingir
- * variables de entorno (ver `tests/pipeline-contracts.test.ts`).
+ * `pipelineOutputDir` por defecto es `env.PIPELINE_OUTPUT_DIR`; el parámetro
+ * existe para poder probar esta función contra un directorio temporal sin
+ * fingir variables de entorno (ver `tests/pipeline-contracts.test.ts`).
  */
-export async function getQualityReport(contractsDir: string = env.CONTRACTS_DIR): Promise<unknown> {
-  return readContractJson('quality.json', contractsDir);
-}
-
-/** Reporte actual de splits train/val/test — `contracts/splits.json`. */
-export async function getSplitReport(contractsDir: string = env.CONTRACTS_DIR): Promise<unknown> {
-  return readContractJson('splits.json', contractsDir);
-}
-
-/** Línea de tiempo de versiones del dataset — `contracts/versions.json`. */
-export async function getVersionHistory(
-  contractsDir: string = env.CONTRACTS_DIR,
+export async function getQualityReport(
+  pipelineOutputDir: string = env.PIPELINE_OUTPUT_DIR,
 ): Promise<unknown> {
-  return readContractJson('versions.json', contractsDir);
+  return readContractJson('quality.json', pipelineOutputDir);
+}
+
+/** Reporte actual de splits train/val/test — `pipeline/data/interim/splits.json`. */
+export async function getSplitReport(
+  pipelineOutputDir: string = env.PIPELINE_OUTPUT_DIR,
+): Promise<unknown> {
+  return readContractJson('splits.json', pipelineOutputDir);
+}
+
+/** Línea de tiempo de versiones del dataset — `pipeline/data/interim/versions.json`. */
+export async function getVersionHistory(
+  pipelineOutputDir: string = env.PIPELINE_OUTPUT_DIR,
+): Promise<unknown> {
+  return readContractJson('versions.json', pipelineOutputDir);
 }

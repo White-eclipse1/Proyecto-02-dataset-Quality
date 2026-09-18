@@ -6,14 +6,21 @@ Feature: Datos reales de la pipeline de Data Quality
   para dejar de depender de los mocks estáticos de APP-01.
 
   Scenario: El reporte de calidad se lee tal como lo dejó la pipeline
-    Given contracts/quality.json existe con un overall_status "fail"
+    Given pipeline/data/interim/quality.json existe con un overall_status "fail"
     When se pide GET /quality-report
     Then la respuesta trae ese mismo overall_status "fail"
 
   Scenario: Un contrato que todavía no existe da un error claro, no un 500 genérico
-    Given contracts/quality.json no existe todavía
+    Given pipeline/data/interim/quality.json no existe todavía
     When se pide GET /quality-report
     Then la respuesta es 404 con un mensaje que dice que hay que correr la pipeline
+
+  Scenario: dvc repro sí cambia lo que ve la Web App (corrección de revisión, Mau)
+    Given contracts/quality.json existe con un overall_status "pass" (el mock viejo, sin tocar)
+    And pipeline/data/interim/quality.json no existe todavía
+    When se corre la pipeline (dvc repro) y produce pipeline/data/interim/quality.json con overall_status "fail"
+    And se pide GET /quality-report
+    Then la respuesta trae overall_status "fail", nunca el "pass" del mock de contracts/
 
   Scenario: La política se lee de quality.yaml, no del último reporte
     Given pipeline/quality.yaml tiene min_images_per_class con threshold 300

@@ -317,8 +317,9 @@ app.get('/dashboard/summary', async (_req, res) => {
 
 /**
  * SPEC-PIPE-001 — Contratos de Data Quality, tal como los deja la pipeline
- * Python en `contracts/` (ver `env.CONTRACTS_DIR`). Solo lectura: un 404 con
- * mensaje explícito significa que la pipeline todavía no ha corrido.
+ * Python en `pipeline/data/interim/` (ver `env.PIPELINE_OUTPUT_DIR`). Solo
+ * lectura: un 404 con mensaje explícito significa que la pipeline todavía
+ * no ha corrido.
  */
 app.get('/quality-report', async (_req, res) => {
   try {

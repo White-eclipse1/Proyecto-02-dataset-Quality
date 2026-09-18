@@ -4,18 +4,26 @@
 
 APP-07 pide reemplazar los mocks estáticos de la Web App
 (`frontend/public/contracts/*.json`) por las salidas reales de la pipeline
-Python: `contracts/quality.json`, `contracts/splits.json`,
-`contracts/versions.json` y `pipeline/quality.yaml`. Esta capa es el único
-punto donde el backend (Fase 2) toca esos archivos — nunca directamente
-desde el frontend, igual que ninguna otra pantalla accede a MariaDB/MinIO
-directo.
+Python: `pipeline/data/interim/quality.json`, `splits.json`, `versions.json`
+(escritos por los stages `quality_gate`/`split`/`release` de
+`pipeline/dvc.yaml`) y `pipeline/quality.yaml`. Esta capa es el único punto
+donde el backend (Fase 2) toca esos archivos — nunca directamente desde el
+frontend, igual que ninguna otra pantalla accede a MariaDB/MinIO directo.
+
+**Corrección de revisión (Mau, PR de APP-07):** la primera versión de este
+spec apuntaba a `contracts/quality.json` (repo root) en vez de
+`pipeline/data/interim/quality.json`. `contracts/` sigue siendo el mock
+versionado de APP-01/APP-05 — ningún stage de `pipeline/dvc.yaml` escribe
+ahí, así que correr `dvc repro` nunca cambiaba lo que la Web App mostraba.
+Ver contracts/README.md, "Reconciliación con APP-07", para el detalle
+completo.
 
 ## Contrato
 
 ```
-GET  /quality-report    -> contracts/quality.json,  tal cual
-GET  /split-report      -> contracts/splits.json,   tal cual
-GET  /version-history   -> contracts/versions.json, tal cual
+GET  /quality-report    -> pipeline/data/interim/quality.json,  tal cual
+GET  /split-report      -> pipeline/data/interim/splits.json,   tal cual
+GET  /version-history   -> pipeline/data/interim/versions.json, tal cual
 GET  /quality-policy    -> pipeline/quality.yaml, como JSON: { "<check_id>": { label, threshold, severity, comparison, unit }, ... }
 PUT  /quality-policy    -> body: { "<check_id>": { threshold, severity }, ... } (todos los checks existentes, ninguno nuevo)
 ```
@@ -56,16 +64,17 @@ PUT  /quality-policy    -> body: { "<check_id>": { threshold, severity }, ... } 
    `dataset_quality.quality_gate.runner` (`dvc repro`), lee este mismo
    archivo y usa los valores nuevos — así es como Settings "afecta la
    siguiente corrida del Quality Gate" (Agent Test de APP-07).
-8. `env.CONTRACTS_DIR` y `env.QUALITY_POLICY_PATH` (`src/config/env.ts`)
+8. `env.PIPELINE_OUTPUT_DIR` y `env.QUALITY_POLICY_PATH` (`src/config/env.ts`)
    controlan dónde vive todo esto. En Docker Compose se montan como volumen
    compartido con la raíz del repo (ver `docker-compose.yml`); en
    desarrollo local (`npm run dev`, fuera de Docker) los defaults apuntan a
-   las rutas reales del monorepo relativas a `backend/`.
+   las rutas reales del monorepo relativas a `backend/`
+   (`pipeline/data/interim/`, no `contracts/`).
 
 ## Flujo esperado
 
 UI (`GET /quality-report` | `/split-report` | `/version-history` |
 `GET`/`PUT /quality-policy`) → Logic (`pipeline-contracts.service.ts`,
 `quality-policy.service.ts` + `quality-policy.builder.ts` para las reglas de
-negocio del PUT) → sistema de archivos (`contracts/*.json`,
+negocio del PUT) → sistema de archivos (`pipeline/data/interim/*.json`,
 `pipeline/quality.yaml`) — nunca MariaDB ni MinIO.
