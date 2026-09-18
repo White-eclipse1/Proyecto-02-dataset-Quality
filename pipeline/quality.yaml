@@ -28,3 +28,9 @@ invalid_boxes:
   severity: fail
   comparison: max
   unit: count
+spatial_bias:
+  label: Maximum object-center cell concentration
+  threshold: 50.0
+  severity: warn
+  comparison: max
+  unit: percent

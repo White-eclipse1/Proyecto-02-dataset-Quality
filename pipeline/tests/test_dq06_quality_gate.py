@@ -8,7 +8,7 @@ import pytest
 from dataset_quality.analyzers.dq06 import analyze_spatial_bias
 from dataset_quality.config.models import SplitConfig
 from dataset_quality.ingestion.models import CocoAnnotation, CocoCategory, CocoDataset, CocoImage
-from dataset_quality.quality_gate.runner import QualityGateBlocked, execute_quality_gate
+from dataset_quality.quality_gate.runner import QualityGateBlockedError, execute_quality_gate
 from dataset_quality.splits.generator import generate_splits
 
 
@@ -28,7 +28,7 @@ def _dataset() -> CocoDataset:
     )
 
 
-def _write_policy(path: Path, minimum: int = 3) -> None:
+def _write_policy(path: Path, minimum: int = 300) -> None:
     path.write_text(
         f"""min_images_per_class:
   label: Minimum images per class
@@ -73,7 +73,7 @@ def test_warn_writes_quality_json_but_does_not_block_downstream_stages(tmp_path:
 
     decision = execute_quality_gate(
         policy_path=policy_path,
-        observations={"min_images_per_class": 3, "class_imbalance": 2.5, "spatial_bias": 10},
+        observations={"min_images_per_class": 300, "class_imbalance": 2.5, "spatial_bias": 10},
         dataset_version="v-test",
         report_path=report_path,
         evidence_by_check={
@@ -109,7 +109,12 @@ def test_fail_returns_nonzero_and_blocks_split_export_and_promotion(tmp_path: Pa
     assert decision.report.overall_status == "fail"
     assert report_path.exists()
     for stage in ("split", "export", "promotion"):
-        with pytest.raises(QualityGateBlocked, match=stage):
+        with pytest.raises(QualityGateBlockedError, match=stage):
             decision.require(stage)
-    with pytest.raises(QualityGateBlocked, match="split"):
-        generate_splits(_dataset(), SplitConfig(), "v-test", quality_gate=decision)
+    with pytest.raises(QualityGateBlockedError, match="split"):
+        generate_splits(
+            _dataset(),
+            SplitConfig(train=0.7, val=0.2, test=0.1, seed=7),
+            "v-test",
+            quality_gate=decision,
+        )
