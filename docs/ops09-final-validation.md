@@ -30,14 +30,17 @@ All commands run inside the `pipeline` Compose profile (real MinIO + the real 31
 | Real `.env` files tracked | `git ls-files \| grep -E '(^\|/)\.env(\..+)?$' \| grep -v '\.example$'` | Empty — only `.env.example`/`.env.production.example` are tracked, never a real `.env` |
 | `.tfstate` tracked | `git ls-files \| grep -E '\.tfstate'` | Empty |
 | Data files tracked (`.jpg`/`.png`/`.parquet`) | `git ls-files \| grep -E '\.(jpg\|png\|parquet)$'` | Empty |
-| AWS access/secret keys | `git log --all -S 'AKIA'` | 3 commits match — all reviewed, all false positives (see below) |
+| AWS access/secret keys | `git log --all -S 'AKIA'` | 4 commits matched as of `ff8dfe0`; every match reviewed, all false positives, and the count is expected to keep growing — see below |
 | LLM API keys (Anthropic/OpenAI-shaped) | `git log --all -p \| grep -inE "sk-ant-...\|sk-...\|ANTHROPIC_API_KEY=...sk-\|OPENAI_API_KEY=...sk-"` | Empty |
 | MinIO / MariaDB credentials | `git log --all -p` for `MINIO_ROOT_PASSWORD`/`MINIO_SECRET_KEY`/`MARIADB_ROOT_PASSWORD`/`DB_PASSWORD` values | Only local-dev placeholders ever appear (`minioadmin`, `password`, `minio_secure_password`, `app_secure_password`) — no value distinct from what `.env.example` already documents publicly |
 
-### The 3 `AKIA` matches — reviewed individually, none is a real key
+### The `AKIA` matches — reviewed individually, none is a real key
 
 - `11d312b` (*Add Terraform CI: fmt/validate/credential-grep...*) — adds `terraform.yml`'s own check, which greps *for* the literal string `AKIA` to block real keys. The match is the detector, not a leak.
 - `1936ab1` (*Revert "Merge pull request #1..."*) and `9311394` (*feat: import project 1 portal...*) — both contain the same line, a documented audit command in a notes/README file: `` git log --all -p | grep -inE "AKIA[0-9A-Z]{16}|..." ``. It's someone's own security-audit recipe, later reverted with the rest of that import — not a credential.
+- `ff8dfe0` (*OPS-09: final infrastructure, DVC, CI and security validation*) — this very document. The table above names the literal string `AKIA` to state which pattern was searched for, so the file recording the audit turns up in the audit's own grep. Review reported this as "the doc says 3, it's 4 now" — correct, and it will keep happening: `-S` matches any commit that changes how many times the string appears, so **every future edit to this section adds another match**, including the commit that fixed the count. A raw number here is stale by construction.
+
+So the durable statement is the rule, not the tally: **every commit matching `AKIA` is either the CI detector that greps for it (`terraform.yml`) or a document naming the pattern it searched for.** No match is, or has been, a credential. To re-audit, run `git log --all -S 'AKIA' --oneline` and check each hit against that rule rather than against a count written down here.
 
 No static AWS credential (`aws_secret_access_key`, `aws-access-key-id`, a literal `AKIA…` key) was found anywhere in history — consistent with `terraform.yml`'s own CI gate, which fails the build on exactly this pattern.
 
@@ -53,6 +56,20 @@ The commands above all ran against an already-populated working tree (this machi
 **Re-verified for real**, in this same session, against the mount as it stood on this branch: ran `docker compose --profile pipeline run --rm pipeline sh -c "dvc pull -r dev --force && dvc repro"` — host-side `pipeline/data/interim/*.json` timestamps updated immediately after the `--rm` container exited (confirmed via `ls -la`), and the live `/versions` screen (no backend/frontend restart) picked up the real `v1.0.0` release data on the next request — proving the persistence path genuinely works end to end, not just that the command exits 0. APP-10's mount is a strict superset of the path exercised here (`./pipeline/data` contains `./pipeline/data/interim`), so that evidence carries over; re-running it once #55 is on `main` is still the cheap confirmation.
 
 This does not change any of the Required Commands results above (all of those already ran inside the `pipeline` profile directly, which was never affected by this bug) — it specifically closes the gap between "the pipeline can produce correct output" (already true) and "a fresh clone's Web App can actually see that output" (false until the mount lands via #55).
+
+## Clean-clone data bootstrap (M1, second finding) — raised in review, fixed here
+
+A second review pass caught what the section above still assumed: the fix for *where `dvc repro`'s output goes* does nothing about *where the input comes from*. On a genuinely clean machine:
+
+1. `minio_data` is a named Compose volume, so MinIO starts **empty**; `minio-init` runs `mc mb --ignore-existing local/dvc-cache`, which creates the bucket but never populates it.
+2. The raw dataset is not in git — only the pointer `pipeline/data/raw/coco-dataset.json.dvc` (md5 `0ac4ecd…`, 345 KB). So `dvc pull -r dev` has nothing to pull, and the flow this document recommended could not run at all.
+3. Nothing in the repo could rebuild it either: the only COCO producer is the backend's `GET /export/coco`, and the automatic seed (`backend/src/data/seed.ts`) inserts **2 sample images** and 3 categories — not the 311 annotated ones. A from-scratch export would carry a different md5 than `dvc.lock` records, and `analyze` would fail the `min_images_per_class: 300` gate anyway.
+
+The evidence in this document was therefore produced on an already-populated environment — this machine's local DVC cache holds the blob (`pipeline/.dvc/cache/files/md5/0a/c4ecdbbd5a9b3144624ec86009b9e7`). The commands and their results stand; what was missing was any way for a second machine to reach that same starting state.
+
+**Fixed**: the environment that produced release `v1.0.0` is published as a GitHub Release asset ([`v1.0.0-data`](https://github.com/White-eclipse1/Proyecto-02-dataset-Quality/releases/tag/v1.0.0-data), `dq-env-bundle-v1.0.0.zip`, ~496 MiB) — the 311 real images, the release's DVC cache, and the MariaDB dump (313 rows in `images`, 1038 in `annotations`). `scripts/restore-env.sh` downloads it, extracts it to a gitignored `.dq-env-bundle/`, and delegates to the bundle's own `restore.sh`, which uploads the objects to MinIO, loads the dump and verifies the counts, failing closed if they don't match. The root `README.md` documents it as the first step of the clean-clone flow, ahead of `dvc repro`. The asset deliberately lives on the Release, not in git: the dataset is versioned with DVC, which is also what the rubric requires.
+
+**Still to confirm on a genuinely clean machine**: that `./scripts/restore-env.sh` → `dvc repro` → `docker compose up` runs end to end from a fresh clone with empty Docker volumes, including whether the restored state also makes `dvc pull -r dev` resolve (the bundle ships the DVC cache; whether its `restore.sh` also seeds the `dvc-cache` bucket in MinIO has not been verified here).
 
 ## Acceptance criteria (issue #48)
 

@@ -56,3 +56,10 @@ plan.json
 # the *.dvc pointer files and dvc.lock outputs that DO need to be tracked.
 pipeline/.dvc/cache/
 pipeline/.dvc/tmp/
+
+# Bundle de datos del release v1.0.0 (~496 MiB), que `scripts/restore-env.sh`
+# baja desde GitHub Releases para poblar MinIO y MariaDB en un clon limpio.
+# Es un asset del release, no contenido del repo: el rubro exige que el dataset
+# NO viva en git, y esto lo mantiene fuera aunque alguien lo extraiga aquí.
+.dq-env-bundle/
+.dq-env-bundle.zip
