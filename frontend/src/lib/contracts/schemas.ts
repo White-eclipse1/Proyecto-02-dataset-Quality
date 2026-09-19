@@ -143,3 +143,16 @@ export const qualityPolicySchema = z.record(z.string(), qualityPolicyCheckSchema
 
 export type QualityPolicyCheck = z.infer<typeof qualityPolicyCheckSchema>;
 export type QualityPolicy = z.infer<typeof qualityPolicySchema>;
+
+// APP-10: respuesta del Dataset Copilot (POST /query contra el servicio
+// `copilot`, pipeline/src/dataset_quality/copilot/http_app.py). Mirrors
+// `CopilotAnswer` (agent.py) exactamente: `dataset_version` es `None` en el
+// JSON cuando el agente respondió sin invocar ninguna tool que trajera esa
+// versión, así que acepta `null`, no solo ausencia de la clave.
+export const copilotAnswerSchema = z.object({
+  answer: z.string(),
+  dataset_version: z.string().nullable(),
+  tools_used: z.array(z.string()),
+});
+
+export type CopilotAnswer = z.infer<typeof copilotAnswerSchema>;

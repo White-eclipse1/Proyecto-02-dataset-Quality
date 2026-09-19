@@ -289,27 +289,173 @@ hoy) — ese es el `pipeline` service completo, terreno de OPS-04, y también
 queda anotado en "Pendiente" en vez de modificarse sin acuerdo con ese
 ticket.
 
-## Pendiente (fuera de alcance de APP-01 / APP-04 / APP-05 / APP-06 / APP-07)
+## Reconciliación con APP-10
+
+`APP-10` era, en el AC tal cual está escrito, un smoke test final: recorrer
+las seis pantallas y correr el Agent Test de cada ticket anterior. En la
+práctica, el Agent Test del Copilot ("hacerle una pregunta real y que
+responda con datos reales, citando versión y herramientas usadas") no se
+podía cumplir — `frontend/src/pages/dataset/Copilot.tsx` seguía siendo el
+placeholder estático que dejó `APP-07` (ver "Pendiente" de esa
+reconciliación arriba: "conecta esa pantalla a datos reales de lectura,
+pero no construye la UI de chat en sí"). El rubro de evaluación del
+profesor (Sección 8, Dataset Copilot, 10 de 100 puntos) confirma que esto
+es un requisito explícito y evaluado, no una mejora opcional: exige un chat
+que fundamente cada respuesta en llamadas reales a las herramientas MCP,
+que cambie de respuesta cuando cambia la fuente de datos, y que cite la
+versión del dataset y las herramientas usadas por respuesta. Con eso, este
+ticket dejó de ser solo un smoke test y pasó a incluir construir el chat
+real, siguiendo el mismo patrón ya usado en `APP-07`/`APP-09`: encontrar el
+gap entre lo que el AC da por hecho y lo que el código realmente hace, y
+cerrarlo en vez de marcar la casilla.
+
+Dos cambios:
+
+- **Chat real del Copilot.** Se agregó un servicio HTTP nuevo
+  (`pipeline/src/dataset_quality/copilot/http_app.py`, servido por
+  `__main__.py` con uvicorn vía `python -m dataset_quality.copilot`) que
+  envuelve el mismo agente y servidor MCP de solo lectura de `APP-06`
+  (`agent.py::answer_question`) detrás de `POST /query` — no es un segundo
+  camino de código, es una capa delgada de validación/HTTP sobre el mismo
+  loop que ya usa `server.py` (ver el docstring de `agent.py`: "no separate
+  code path"). En `docker-compose.yml` es un servicio nuevo, `copilot`,
+  deliberadamente NO detrás del profile `pipeline` (que es solo tooling de
+  CLI/batch): el Agent Test necesita que responda con un `docker compose
+  up` normal. `frontend/src/pages/dataset/Copilot.tsx` se reescribió por
+  completo — de un placeholder estático a un chat real
+  (`frontend/src/lib/api/copilot.ts::askCopilot`, proxiado por nginx en
+  `/copilot-api/` → `copilot:8100`, o por Vite en dev) que manda cada pregunta,
+  muestra la respuesta, y renderiza `dataset_version` y `tools_used` como
+  insignias junto a cada respuesta — cumpliendo directamente los incisos
+  (b)/(c) de la Sección 8 del rubro. Un fallo del provider (sin
+  `ANTHROPIC_API_KEY`, o el provider caído) llega al chat como un mensaje
+  corto y fijo, nunca un traceback (`http_app.py` mapea
+  `InvalidQuestionError`→400, provider no configurado→503,
+  `CopilotProviderError`→502 — inciso (d) del rubro).
+- **Mismo bug que encontró Mau en APP-07, del lado de Python.** Ya estaba
+  anotado en "Pendiente" (ver abajo, y la "Corrección de revisión (Mau)" de
+  `APP-07` arriba): `copilot/agent.py::default_contracts_dir` seguía
+  apuntando por defecto a `contracts/` (raíz del repo, el mock versionado
+  de APP-01/APP-05) en vez de `pipeline/data/interim/` (la salida real que
+  escribe `pipeline/dvc.yaml`). Se corrigió el default y se agregaron los
+  campos `copilot_contracts_dir`/`copilot_port` a `Settings`
+  (`pipeline/src/dataset_quality/config/settings.py`) para que el nuevo
+  servicio HTTP lea del mismo lugar, con `docker-compose.yml` montando
+  `./pipeline/data/interim` como volumen de solo lectura para el servicio
+  `copilot` — igual que ya hace `backend`. Sin este fix, el inciso (b) del
+  rubro ("si cambia un valor en la fuente, la respuesta debe cambiar") no
+  se podía cumplir para el Copilot aunque el chat ya funcionara: el agente
+  seguiría leyendo el mock estático, nunca `dvc repro`.
+
+### Corrección de revisión (validación en vivo del Agent Test, APP-10)
+
+Validando el smoke test completo en una máquina con Docker (mismo patrón
+que `APP-09`), entrar directo a `http://localhost:8080/copilot` en el
+navegador tronaba con "Unable to connect", perdiendo el puerto (terminaba
+en `http://localhost/copilot/`) — parecía un problema del navegador o de
+una extensión/VPN, pero se reprodujo igual desde PowerShell
+(`Invoke-WebRequest`, sin navegador de por medio) y en una ventana privada
+sin historial, descartando ambas causas. Los logs de `docker compose logs
+frontend` mostraron la causa real: `nginx.conf` tenía el proxy del Copilot
+en `location /copilot/` — el mismo prefijo que ya usa esta pantalla como
+ruta de React Router. Visitar `/copilot` (sin `/query`) activaba el
+redirect automático de nginx para agregar la barra final
+(`/copilot` → `/copilot/`), y ese redirect usa la variable `$host` de
+nginx, que por diseño **siempre** quita el puerto — el navegador terminaba
+en `http://localhost/copilot/` (puerto 80, nada escuchando ahí) en vez de
+`:8080`. En uso normal de la app nunca se nota (`askCopilot` siempre pide
+`/copilot/query`, nunca la ruta pelona), pero cualquiera que entrara
+directo a la URL de la pantalla — exactamente lo que pide el Agent Test —
+se topaba con esto.
+
+Fix: renombrar el proxy a `location /copilot-api/` (`nginx.conf`) y
+`/copilot-api` en el proxy de Vite (`vite.config.ts`) y en
+`COPILOT_BASE_URL` (`lib/api/copilot.ts`), eliminando la colisión de raíz
+en vez de intentar evitar el redirect de nginx. Confirmado con un rebuild
+(`docker compose up --build`) real: `http://localhost:8080/copilot` carga
+la SPA completa (no el proxy) y una pregunta real de punta a punta
+respondió con `dataset_version`/`tools_used` citados y acentos correctos.
+
+`ANTHROPIC_API_KEY` / `COPILOT_MODEL` se agregaron a `.env.example` /
+`.env.production.example` (raíz del repo, los que lee `docker compose up`
+vía sustitución automática de variables — no confundir con
+`pipeline/.env.example`, que ya los tenía desde `APP-06` para correr el
+Copilot fuera de Docker). Sin una key real de Anthropic, el chat sigue
+respondiendo (503 limpio, ver arriba), pero el Agent Test del rubro
+("hacerle una pregunta real") necesita una.
+
+Verificado con `pytest` en `pipeline/` (99/99, incluyendo el fix de
+`default_contracts_dir` y las 14 pruebas nuevas de `http_app.py`, todas
+con el ciclo rojo→verde→mutación ya usado en el resto del proyecto),
+`ruff check`/`ruff format --check` limpios, y en `frontend/` con
+`tsc --noEmit`, `biome check` y `npm test` (27/27, incluyendo pruebas
+nuevas del chat: pregunta real con insignias de versión/herramientas,
+respuesta sin `dataset_version` cuando el agente no invoca ninguna tool, y
+mensaje de error corto ante un 502 del provider) — todos limpios.
+`docker compose config` valida la sintaxis del `docker-compose.yml`
+resultante; la validación end-to-end contenedorizada se corrió en una
+máquina con Docker, igual que se hizo para `APP-09` (ver arriba).
+
+### Corrección de revisión (PM: persistir la salida real de `dvc repro`, APP-10)
+
+La validación en vivo de arriba solo pudo probar el chat con datos reales
+porque, ante `pipeline/data/interim/` completamente vacío en un clon
+limpio, se copió a mano el mock de `contracts/*.json` para desatorar la
+prueba de la UI — un parche temporal, no la solución. El PM lo señaló
+correctamente en la revisión del PR: el servicio `pipeline` de
+`docker-compose.yml` nunca tuvo volumen para `data/` (a diferencia de
+`backend`/`copilot`, que sí montan `pipeline/data/interim` desde
+`APP-07`/arriba), así que `docker compose --profile pipeline run --rm
+pipeline dvc repro` escribe `quality.json`/`splits.json`/`versions.json`
+solo dentro del contenedor efímero, que se destruye al salir del comando.
+En un clon limpio, ni `backend` ni `copilot` llegan a ver nunca datos
+reales — el Agent Test de la Sección 8 del rubro (`copilot` respondiendo
+con datos reales, y "si cambia un valor en la fuente, la respuesta debe
+cambiar") queda bloqueado sin importar que `ANTHROPIC_API_KEY` esté bien
+configurada. Esto ya estaba anotado como fuera de alcance en "Pendiente"
+(ver la versión anterior de esta sección) — el PM tenía razón en que no lo
+es: sin este fix, el criterio mecánicamente verificable del rubro no se
+puede cumplir nunca en un clon limpio.
+
+Fix: `docker-compose.yml` monta ahora `./pipeline/data:/app/data`
+(lectura + escritura, no `:ro`) en el servicio `pipeline` — todo `data/`,
+no solo `interim/`, por dos razones más allá del pedido original: (1) la
+etapa `release` de `dvc.yaml` también lee y reescribe
+`data/version_history.json` (el ledger de releases, versionado en git,
+fuera de `interim/`) vía `--history`, que se perdería igual sin este
+volumen; (2) `dvc pull` escribe el dataset crudo en
+`data/raw/coco-dataset.json`, y persistirlo evita reformarlo en cada
+`dvc repro`. Verificado con `docker compose --profile pipeline config`:
+el volumen resuelve a `<repo>/pipeline/data:/app/data` sin afectar a
+ningún otro servicio.
+
+También se actualizó la rama con `main` (`git merge`, sin conflictos):
+trae la corrección de finales de línea de `APP-09` (`.gitattributes`,
+mergeada a `main` como PR #54 después de que esta rama se creara desde un
+`main` más viejo) más el trabajo de `OPS-07`/`DQ-07`/`DQ-08` que llegó
+mientras tanto. Ninguno de esos cambios toca `docker-compose.yml`,
+`contracts/` ni nada del código del Copilot, así que el merge fue
+mecánico.
+
+Pendiente de repetir en la máquina de validación: correr la pipeline real
+(`docker compose --profile pipeline run --rm pipeline sh -c "PYTHONPATH=src
+dvc repro"`, documentado en `README.md`, sección "DVC (OPS-04)" — el
+bucket `dvc-cache` y las credenciales ya están resueltos dentro del
+profile `pipeline`, sin pasos manuales) y repetir el smoke test del
+Copilot con una pregunta real contra ese `pipeline/data/interim/`
+genuino, en vez del mock de `contracts/` usado para la validación
+anterior.
+
+## Pendiente (fuera de alcance de APP-01 / APP-04 / APP-05 / APP-06 / APP-07 / APP-10)
 
 - Reemplazar `SplitsSummary` (APP-06) por el `SplitResult` real de
   `APP-04` en `copilot/contracts.py`, ahora que esa rama ya está en `main`.
 - Reincorporar `spatial_bias` a `quality.yaml` si Data Quality decide
   retomarlo — la pestaña de Analyzers ya está lista para mostrarlo sin
   cambios adicionales (ver "Reconciliación con APP-05").
-- Cablear un chat real en la pantalla **Copilot** contra el servidor MCP y
-  el agente de `APP-06` — `APP-07` conecta esa pantalla a datos reales de
-  lectura, pero no construye la UI de chat en sí; ver
-  `frontend/src/pages/dataset/Copilot.tsx`.
 - Decidir si `useContractFetch.ts` y `frontend/public/contracts/*.json`
   se retiran del todo ahora que ninguna pantalla los usa (ver
   "Reconciliación con APP-07").
-- El Copilot (`copilot/agent.py::default_contracts_dir`, APP-06) sigue
-  apuntando por defecto a `contracts/` (repo root) en vez de
-  `pipeline/data/interim/` — mismo problema de fondo que la corrección de
-  revisión de arriba, pero del lado de la pipeline Python, no de la Web
-  App. `dvc repro` tampoco actualiza lo que responde el Copilot hoy.
-- El servicio `pipeline` de `docker-compose.yml` no tiene volumen para
-  `data/`: un `dvc repro` corrido vía
-  `docker compose --profile pipeline run pipeline dvc repro` no persiste
-  su salida al host (funciona corriendo la pipeline localmente). Es
-  terreno de OPS-04.
+- ~~El servicio `pipeline` de `docker-compose.yml` no tiene volumen para
+  `data/`~~ — resuelto, ver "Corrección de revisión (PM: persistir la
+  salida real de `dvc repro`, APP-10)" arriba.
