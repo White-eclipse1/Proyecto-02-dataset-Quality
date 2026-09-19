@@ -47,6 +47,11 @@ Requisitos: Docker y Docker Compose (`docker compose version`). No hace falta
 Node, Python ni ninguna base de datos instalada localmente -- todo corre en
 contenedores.
 
+Eso cubre levantar la app. **Restaurar el dataset real** (siguiente sección)
+pide además un shell POSIX: `bash`, `curl`, y `unzip` o Python. En Windows
+eso significa **Git Bash o WSL** -- `./scripts/restore-env.sh` no corre desde
+PowerShell ni desde `cmd`.
+
 Desde la raíz del repo, sin ningún paso manual previo (no hay que copiar
 ningún `.env`; las variables ya están fijadas en `docker-compose.yml` para
 desarrollo local):
@@ -93,18 +98,30 @@ fabricado -- ver la "Limitación conocida" al final de la sección de DVC.
 
 Para dejar el entorno con el dataset real del release `v1.0.0`, **con el stack
 ya levantado** (el script escribe en MinIO y en MariaDB, así que necesita que
-esos servicios estén corriendo):
+esos servicios estén corriendo) y desde un shell POSIX (`bash`; en Windows,
+Git Bash o WSL -- no PowerShell):
 
 ```bash
 docker compose up -d --build   # si aún no lo está
 ./scripts/restore-env.sh
 ```
 
-Baja el bundle de datos (~496 MiB) desde [GitHub Releases][bundle], sube las
-311 imágenes a MinIO, carga el dump de MariaDB (313 filas en `images`, 1038 en
-`annotations`) y verifica los conteos -- si algo no cuadra corta con error en
-vez de dejarte seguir con datos a medias. Si el bundle ya está en disco, no lo
-vuelve a descargar.
+Necesita `curl` y, para descomprimir, `unzip` o Python (usa el que encuentre).
+
+Baja el bundle de datos (~496 MiB) desde [GitHub Releases][bundle], **verifica
+su SHA-256 contra el digest que publica GitHub antes de extraer o ejecutar
+nada** (si no coincide, borra la descarga y corta), sube las 311 imágenes a
+MinIO, carga el dump de MariaDB (313 filas en `images`, 1038 en `annotations`)
+y verifica los conteos -- si algo no cuadra corta con error en vez de dejarte
+seguir con datos a medias. Si el bundle ya está en disco, no lo vuelve a
+descargar.
+
+El digest esperado está fijado en el script y se puede contrastar con la
+fuente sin confiar en el repo:
+
+```bash
+gh api repos/White-eclipse1/Proyecto-02-dataset-Quality/releases/tags/v1.0.0-data --jq '.assets[].digest'
+```
 
 El bundle es un asset del release, no contenido del repo: el dataset se
 versiona con DVC, no con git.
