@@ -91,9 +91,12 @@ bajando el objeto de MinIO. Sin esos datos falla cerrado a propósito
 (`DuplicateBytesUnavailableError`) en vez de reportar un `duplicates: 0`
 fabricado -- ver la "Limitación conocida" al final de la sección de DVC.
 
-Para dejar el entorno con el dataset real del release `v1.0.0`:
+Para dejar el entorno con el dataset real del release `v1.0.0`, **con el stack
+ya levantado** (el script escribe en MinIO y en MariaDB, así que necesita que
+esos servicios estén corriendo):
 
 ```bash
+docker compose up -d --build   # si aún no lo está
 ./scripts/restore-env.sh
 ```
 
@@ -232,18 +235,23 @@ dvc pull -r dev
 **Su salida tiene que llegar al host** (hallazgo de la auditoría externa, OPS-09): sin un `volumes:` para `data/` en el servicio `pipeline`, `quality.json`/`splits.json`/`versions.json` se escriben solo dentro de la capa del contenedor `--rm` y desaparecen al salir — `backend` bind-montea ese mismo directorio del host en solo lectura y nunca ve nada, así que en un clon limpio las 6 pantallas de Dataset Quality (`/overview`, `/analyzers`, `/splits`, `/versions`, `/copilot`, `/settings`) cargan sin error pero sin datos. El montaje que lo resuelve (`./pipeline/data:/app/data`) lo aporta APP-10 (PR #55), que necesita esa misma persistencia para el Copilot; por eso no se duplica aquí. Con él en su lugar, el orden real para tener las 6 pantallas con datos reales desde un clon limpio es:
 
 ```bash
+docker compose up -d --build      # MariaDB y MinIO tienen que estar arriba ya
 ./scripts/restore-env.sh          # solo la primera vez, en un clon limpio
 docker compose --profile pipeline run --rm pipeline sh -c "PYTHONPATH=src dvc repro"
-docker compose up --build
 ```
 
-El primer paso es el que hace reproducible todo lo demás: en un clon limpio
-el bucket `dvc-cache` de MinIO lo crea `minio-init` **vacío**, y el dataset
-crudo no vive en git (solo su puntero `.dvc`), así que `dvc pull -r dev` no
-tiene de dónde bajar nada todavía — `restore-env.sh` puebla MinIO y MariaDB
-desde el bundle del release `v1.0.0` (ver [Dataset real](#dataset-real-necesario-para-el-pipeline)
-arriba). Una vez restaurado, `dvc pull -r dev` sí funciona para sincronizar
-contra el remote DEV; el `dvc repro` de arriba tarda la primera vez porque
-corre las 6 etapas de verdad.
+El orden importa: `restore-env.sh` **escribe** en MinIO y en MariaDB (sube las
+311 imágenes y carga el dump), así que esos dos servicios tienen que estar
+corriendo antes — por eso el `docker compose up` va primero y no al final.
+Con el stack ya arriba, las 6 pantallas recogen los datos en la siguiente
+petición, sin reiniciar nada.
+
+Y ese restore es lo que hace reproducible todo lo demás: en un clon limpio el
+bucket `dvc-cache` de MinIO lo crea `minio-init` **vacío** y el dataset crudo
+no vive en git (solo su puntero `.dvc`), así que `dvc pull -r dev` no tiene de
+dónde bajar nada todavía; el bundle del release `v1.0.0` es el que trae los
+bytes reales (ver [Dataset real](#dataset-real-necesario-para-el-pipeline)
+arriba). El `dvc repro` tarda la primera vez porque corre las 6 etapas de
+verdad.
 
 **Limitación conocida:** la verificación de `duplicates` (pHash) necesita descargar las imágenes reales desde el object store — el export COCO solo trae el nombre de archivo, no el `storage_key` de MinIO, así que la etapa `analyze` lo resuelve consultando la tabla `images` de MariaDB por `id` (los IDs de COCO son los mismos IDs de la BD). `duplicates` es un check `severity: fail` en `quality.yaml`, así que si esa BD/objeto no está disponible en el entorno donde corre `dvc repro` (por ejemplo, corriendo contra un dataset anotado en otra instancia), la etapa `analyze` **falla cerrado**: lanza `DuplicateBytesUnavailableError` y no se genera `quality.json` — nunca se reporta un `duplicates: 0` fabricado que dejaría pasar el gate sin haber medido nada de verdad.
