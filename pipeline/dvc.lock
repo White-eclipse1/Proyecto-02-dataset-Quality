@@ -174,7 +174,7 @@ stages:
     outs:
     - path: data/interim/quality.json
       hash: md5
-      md5: 39f391281569e79f9a68dbd7b99349f2
+      md5: c0fa142c8c7f3e12f96ae9ee6c8aa2a8
       size: 1787
   split:
     cmd: PYTHONPATH=src python -m dataset_quality.splits data/interim/coco.json 
@@ -193,7 +193,7 @@ stages:
       size: 24
     - path: data/interim/quality.json
       hash: md5
-      md5: 39f391281569e79f9a68dbd7b99349f2
+      md5: c0fa142c8c7f3e12f96ae9ee6c8aa2a8
       size: 1787
     - path: src/dataset_quality/analyzers/m3.py
       hash: md5
@@ -244,7 +244,7 @@ stages:
       size: 2745
     - path: data/interim/splits.json
       hash: md5
-      md5: 5f16d0771f99198bd1562a28dbf5625c
+      md5: 6506f23bff4e67940271e0ef97f5e1e6
       size: 776
   release:
     cmd: PYTHONPATH=src python -m dataset_quality.versioning --coco 
@@ -268,11 +268,11 @@ stages:
       size: 190
     - path: data/interim/quality.json
       hash: md5
-      md5: 39f391281569e79f9a68dbd7b99349f2
+      md5: c0fa142c8c7f3e12f96ae9ee6c8aa2a8
       size: 1787
     - path: data/interim/splits.json
       hash: md5
-      md5: 5f16d0771f99198bd1562a28dbf5625c
+      md5: 6506f23bff4e67940271e0ef97f5e1e6
       size: 776
     - path: quality.yaml
       hash: md5
@@ -320,5 +320,5 @@ stages:
     outs:
     - path: data/interim/versions.json
       hash: md5
-      md5: b0a903045e075c142f094de08595967f
+      md5: 7492dbad4298a199439ed2ff48bc60fd
       size: 593
