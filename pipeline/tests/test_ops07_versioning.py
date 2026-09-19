@@ -160,3 +160,49 @@ def test_main_requires_v1_0_0_as_the_first_release(
 
     with pytest.raises(ValueError, match="first dataset release must be v1.0.0"):
         _run_main(monkeypatch, dataset_version="v1.1.0", history=empty_history)
+
+
+# --- main()'s Quality Gate guard --------------------------------------------
+#
+# `release` must not record a version whose gate is red. In the DVC DAG that is
+# already implied (`split` blocks first and `release` depends on its output),
+# but running the module directly must refuse on its own.
+
+
+def test_main_refuses_to_release_when_the_quality_gate_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    quality_report = tmp_path / "quality.json"
+    quality_report.write_text(json.dumps({"overall_status": "fail"}), encoding="utf-8")
+    history = tmp_path / "version_history.json"  # first release, nothing written yet
+    output = tmp_path / "versions.json"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "versioning",
+            "--coco",
+            "unused-coco.json",
+            "--quality-report",
+            str(quality_report),
+            "--m3-baseline",
+            "unused-m3.json",
+            "--observations",
+            "unused-observations.json",
+            "--policy",
+            "unused-policy.yaml",
+            "--dataset-version",
+            "v1.0.0",
+            "--history",
+            str(history),
+            "--output",
+            str(output),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+
+    assert excinfo.value.code == 1
+    assert "Quality Gate failed" in capsys.readouterr().err
+    assert not history.exists()
+    assert not output.exists()
