@@ -82,3 +82,51 @@ module "dataset_releases" {
     Environment = "dev"
   }
 }
+
+# --- OPS-07: scoped S3 permissions for the release-to-PROD workflow ---
+#
+# The one real OIDC role lives here (this environment's github_oidc module),
+# and this project has a single AWS account for now, so it's also the role
+# that publishes to PROD's buckets, not a separate prod-account role. The
+# github-oidc module only supports attaching pre-made AWS-managed policy
+# ARNs (see its main.tf) — there's no inline-policy mechanism there, so a
+# customer-managed policy scoped to exactly these 4 real bucket ARNs (never
+# a broad managed policy like AmazonS3FullAccess) is defined and attached
+# here instead. `role = "github-actions-dataset-quality-dev"` is the same
+# literal already passed as this module's own `role_name` input above.
+data "aws_iam_policy_document" "release_publish" {
+  statement {
+    sid     = "ListReleaseBuckets"
+    effect  = "Allow"
+    actions = ["s3:ListBucket"]
+    resources = [
+      module.dvc_cache.bucket_arn,
+      module.dataset_releases.bucket_arn,
+      "arn:aws:s3:::dvc-cache-prod-${data.aws_caller_identity.current.account_id}",
+      "arn:aws:s3:::dataset-releases-prod-${data.aws_caller_identity.current.account_id}",
+    ]
+  }
+
+  statement {
+    sid     = "ReadWriteReleaseObjects"
+    effect  = "Allow"
+    actions = ["s3:GetObject", "s3:PutObject"]
+    resources = [
+      "${module.dvc_cache.bucket_arn}/*",
+      "${module.dataset_releases.bucket_arn}/*",
+      "arn:aws:s3:::dvc-cache-prod-${data.aws_caller_identity.current.account_id}/*",
+      "arn:aws:s3:::dataset-releases-prod-${data.aws_caller_identity.current.account_id}/*",
+    ]
+  }
+}
+
+resource "aws_iam_policy" "release_publish" {
+  name        = "dataset-quality-release-publish"
+  description = "Least-privilege S3 access for the release workflow: dvc-cache/dataset-releases in dev and prod only."
+  policy      = data.aws_iam_policy_document.release_publish.json
+}
+
+resource "aws_iam_role_policy_attachment" "release_publish" {
+  role       = "github-actions-dataset-quality-dev"
+  policy_arn = aws_iam_policy.release_publish.arn
+}
