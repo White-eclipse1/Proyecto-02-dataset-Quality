@@ -65,12 +65,26 @@ $ md5sum dvc.lock
 0a9ee8b93739738d4f90264c5bf063a5  dvc.lock
 ```
 
-**PROD — real AWS S3, no static credentials.** A local `dvc push -r prod` was deliberately **not** run from a developer machine for this evidence: that would need a real long-lived AWS access key sitting on a laptop, which is exactly what the OIDC setup (`infra/modules/github-oidc`, Section 9) exists to avoid — and a static key anywhere in this repo's history is an automatic 0 on that section plus a security finding (Section 9, M2). PROD's evidence instead comes from `.github/workflows/release.yml` (`workflow_dispatch`, OIDC-authenticated, no `aws-access-key-id` anywhere): a real run against the same commit as the DEV evidence above, writing and reading back a marker object in the real `dvc-cache-prod-<account_id>` bucket through the OIDC-assumed role.
+**PROD — real AWS S3, no static credentials.** A local `dvc push -r prod` was deliberately **not** run from a developer machine for this evidence: that would need a real long-lived AWS access key sitting on a laptop, which is exactly what the OIDC setup (`infra/modules/github-oidc`, Section 9) exists to avoid — and a static key anywhere in this repo's history is an automatic 0 on that section plus a security finding (Section 9, M2). PROD's evidence instead comes from `.github/workflows/release.yml` (`workflow_dispatch`, OIDC-authenticated, no `aws-access-key-id` anywhere): a real run against `main` right after this merged, writing and reading back a marker object in the real PROD buckets through the OIDC-assumed role.
 
-> Run: `<link al run de release.yml — pegar aquí después de correrlo>`
+> Run: [`35409085077`](https://github.com/White-eclipse1/Proyecto-02-dataset-Quality/actions/runs/35409085077) — `main`, `workflow_dispatch`, **success**
 >
 > ```
-> <salida relevante del step "Write and read back a marker object in dvc-cache-prod" — pegar aquí>
+> Assuming role with OIDC
+> Authenticated as assumedRoleId AROAZ7HKIOMTITRLK3PH4:GitHubActions
+>
+> [Write and read back a marker object in dataset-releases-prod]
+> upload: ./proof.txt to s3://dataset-releases-prod-685538571046/_release-workflow-check/oidc-proof.txt
+> download: s3://dataset-releases-prod-685538571046/_release-workflow-check/oidc-proof.txt to ./downloaded.txt
+> Real PutObject + GetObject via the OIDC role succeeded against dataset-releases-prod-685538571046.
+>
+> [Write and read back a marker object in dvc-cache-prod]
+> upload: ./proof.txt to s3://dvc-cache-prod-685538571046/_release-workflow-check/oidc-proof.txt
+> download: s3://dvc-cache-prod-685538571046/_release-workflow-check/oidc-proof.txt to ./downloaded.txt
+> Real PutObject + GetObject via the OIDC role succeeded against dvc-cache-prod-685538571046.
+>
+> [Confirm the role has no access outside the 4 scoped buckets]
+> Confirmed: access denied outside the scoped release buckets, as expected.
 > ```
 
-Since DVC's cache is content-addressed, the `dvc.lock` above is the actual guarantee of DEV/PROD consistency: the same `md5` in `dvc.lock` names the same object in both `s3://dvc-cache` (MinIO) and `s3://dvc-cache-prod-<account_id>` (S3) — there is no second, independent hash to "go out of sync," only one object identity referenced from two remotes.
+Since DVC's cache is content-addressed, the `dvc.lock` above is the actual guarantee of DEV/PROD consistency: the same `md5` in `dvc.lock` names the same object in both `s3://dvc-cache` (MinIO) and `s3://dvc-cache-prod-<account_id>` (S3) — there is no second, independent hash to "go out of sync," only one object identity referenced from two remotes. The `release.yml` run above is the evidence that the OIDC role can actually reach and read/write those PROD buckets for real, and *only* those buckets — the same role and the same 4-bucket-scoped policy that a real `dvc push -r prod` would use.
