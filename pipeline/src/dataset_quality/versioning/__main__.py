@@ -30,6 +30,7 @@ mock-file boundary between the pipeline and the frontend/Copilot, unchanged here
 from __future__ import annotations
 
 import json
+import sys
 from argparse import ArgumentParser
 from datetime import UTC, datetime
 from pathlib import Path
@@ -126,6 +127,14 @@ def main() -> None:
         raise ValueError(f"the first dataset release must be v1.0.0, got {args.dataset_version!r}")
 
     quality_report = json.loads(args.quality_report.read_text(encoding="utf-8"))
+    if quality_report["overall_status"] == "fail":
+        print(
+            "[release] Quality Gate failed; release is blocked (a red gate never "
+            "produces a versioned, promotable dataset).",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     m3_baseline = json.loads(args.m3_baseline.read_text(encoding="utf-8"))
     observations = json.loads(args.observations.read_text(encoding="utf-8"))
     policy = load_policy(args.policy)

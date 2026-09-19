@@ -106,8 +106,8 @@ stages:
       isexec: true
     - path: src/dataset_quality/config/settings.py
       hash: md5
-      md5: b65ab770f159df66e6a77743c4b49f4b
-      size: 1837
+      md5: f2cf53c1ba747119441327da7e6e738d
+      size: 2510
       isexec: true
     - path: src/dataset_quality/ingestion/models.py
       hash: md5
@@ -306,8 +306,8 @@ stages:
       isexec: true
     - path: src/dataset_quality/versioning/__main__.py
       hash: md5
-      md5: d3f25e4f1dae9de0a3d720d7e1ea87e2
-      size: 7322
+      md5: 62148bc414a33236247adb35caf8fc6f
+      size: 7608
       isexec: true
     - path: src/dataset_quality/versioning/models.py
       hash: md5
