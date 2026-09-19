@@ -371,11 +371,10 @@ se topaba con esto.
 Fix: renombrar el proxy a `location /copilot-api/` (`nginx.conf`) y
 `/copilot-api` en el proxy de Vite (`vite.config.ts`) y en
 `COPILOT_BASE_URL` (`lib/api/copilot.ts`), eliminando la colisión de raíz
-en vez de intentar evitar el redirect de nginx. Pendiente de confirmar con
-un rebuild (`docker compose up --build`) en la misma máquina que
-`http://localhost:8080/copilot` ya carga la SPA (no el proxy) y que una
-pregunta real de punta a punta sigue respondiendo con
-`dataset_version`/`tools_used` citados.
+en vez de intentar evitar el redirect de nginx. Confirmado con un rebuild
+(`docker compose up --build`) real: `http://localhost:8080/copilot` carga
+la SPA completa (no el proxy) y una pregunta real de punta a punta
+respondió con `dataset_version`/`tools_used` citados y acentos correctos.
 
 `ANTHROPIC_API_KEY` / `COPILOT_MODEL` se agregaron a `.env.example` /
 `.env.production.example` (raíz del repo, los que lee `docker compose up`
@@ -394,9 +393,58 @@ nuevas del chat: pregunta real con insignias de versión/herramientas,
 respuesta sin `dataset_version` cuando el agente no invoca ninguna tool, y
 mensaje de error corto ante un 502 del provider) — todos limpios.
 `docker compose config` valida la sintaxis del `docker-compose.yml`
-resultante; la validación end-to-end contenedorizada (imposible desde este
-sandbox, ver política de red) queda pendiente de correr en una máquina con
-Docker, igual que se hizo para `APP-09`.
+resultante; la validación end-to-end contenedorizada se corrió en una
+máquina con Docker, igual que se hizo para `APP-09` (ver arriba).
+
+### Corrección de revisión (PM: persistir la salida real de `dvc repro`, APP-10)
+
+La validación en vivo de arriba solo pudo probar el chat con datos reales
+porque, ante `pipeline/data/interim/` completamente vacío en un clon
+limpio, se copió a mano el mock de `contracts/*.json` para desatorar la
+prueba de la UI — un parche temporal, no la solución. El PM lo señaló
+correctamente en la revisión del PR: el servicio `pipeline` de
+`docker-compose.yml` nunca tuvo volumen para `data/` (a diferencia de
+`backend`/`copilot`, que sí montan `pipeline/data/interim` desde
+`APP-07`/arriba), así que `docker compose --profile pipeline run --rm
+pipeline dvc repro` escribe `quality.json`/`splits.json`/`versions.json`
+solo dentro del contenedor efímero, que se destruye al salir del comando.
+En un clon limpio, ni `backend` ni `copilot` llegan a ver nunca datos
+reales — el Agent Test de la Sección 8 del rubro (`copilot` respondiendo
+con datos reales, y "si cambia un valor en la fuente, la respuesta debe
+cambiar") queda bloqueado sin importar que `ANTHROPIC_API_KEY` esté bien
+configurada. Esto ya estaba anotado como fuera de alcance en "Pendiente"
+(ver la versión anterior de esta sección) — el PM tenía razón en que no lo
+es: sin este fix, el criterio mecánicamente verificable del rubro no se
+puede cumplir nunca en un clon limpio.
+
+Fix: `docker-compose.yml` monta ahora `./pipeline/data:/app/data`
+(lectura + escritura, no `:ro`) en el servicio `pipeline` — todo `data/`,
+no solo `interim/`, por dos razones más allá del pedido original: (1) la
+etapa `release` de `dvc.yaml` también lee y reescribe
+`data/version_history.json` (el ledger de releases, versionado en git,
+fuera de `interim/`) vía `--history`, que se perdería igual sin este
+volumen; (2) `dvc pull` escribe el dataset crudo en
+`data/raw/coco-dataset.json`, y persistirlo evita reformarlo en cada
+`dvc repro`. Verificado con `docker compose --profile pipeline config`:
+el volumen resuelve a `<repo>/pipeline/data:/app/data` sin afectar a
+ningún otro servicio.
+
+También se actualizó la rama con `main` (`git merge`, sin conflictos):
+trae la corrección de finales de línea de `APP-09` (`.gitattributes`,
+mergeada a `main` como PR #54 después de que esta rama se creara desde un
+`main` más viejo) más el trabajo de `OPS-07`/`DQ-07`/`DQ-08` que llegó
+mientras tanto. Ninguno de esos cambios toca `docker-compose.yml`,
+`contracts/` ni nada del código del Copilot, así que el merge fue
+mecánico.
+
+Pendiente de repetir en la máquina de validación: correr la pipeline real
+(`docker compose --profile pipeline run --rm pipeline sh -c "PYTHONPATH=src
+dvc repro"`, documentado en `README.md`, sección "DVC (OPS-04)" — el
+bucket `dvc-cache` y las credenciales ya están resueltos dentro del
+profile `pipeline`, sin pasos manuales) y repetir el smoke test del
+Copilot con una pregunta real contra ese `pipeline/data/interim/`
+genuino, en vez del mock de `contracts/` usado para la validación
+anterior.
 
 ## Pendiente (fuera de alcance de APP-01 / APP-04 / APP-05 / APP-06 / APP-07 / APP-10)
 
@@ -408,8 +456,6 @@ Docker, igual que se hizo para `APP-09`.
 - Decidir si `useContractFetch.ts` y `frontend/public/contracts/*.json`
   se retiran del todo ahora que ninguna pantalla los usa (ver
   "Reconciliación con APP-07").
-- El servicio `pipeline` de `docker-compose.yml` no tiene volumen para
-  `data/`: un `dvc repro` corrido vía
-  `docker compose --profile pipeline run pipeline dvc repro` no persiste
-  su salida al host (funciona corriendo la pipeline localmente). Es
-  terreno de OPS-04.
+- ~~El servicio `pipeline` de `docker-compose.yml` no tiene volumen para
+  `data/`~~ — resuelto, ver "Corrección de revisión (PM: persistir la
+  salida real de `dvc repro`, APP-10)" arriba.
