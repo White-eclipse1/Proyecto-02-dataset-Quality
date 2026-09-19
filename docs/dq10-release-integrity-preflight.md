@@ -1,58 +1,73 @@
-# DQ-10 — Preflight de integridad del release
+# DQ-10 — Integridad final del release
 
-**Estado:** `BLOCKED` para la ejecución final del Quality Gate.  
-**Fecha de verificación:** 2026-09-18  
-**Rama:** `feat/phase-4-rol1-dq10`
+**Estado:** PASS
+**Fecha de cierre:** 2026-09-18
+**Rama:** feat/phase-4-rol1-dq10
 
-## Evidencia restaurada
+## Objetivo
+
+Confirmar que las mutaciones adversariales usadas durante las pruebas no llegaron al
+release y que el pipeline usa el dataset real, con sus filas de MariaDB y objetos de
+MinIO correspondientes.
+
+## Restauración verificable del dataset
+
+Se ejecutó ./scripts/restore-env.sh desde Git Bash. El script descargó el asset
+oficial v1.0.0-data, validó su SHA-256 antes de extraerlo y cargó el entorno:
 
 | Control | Resultado |
 | --- | --- |
-| Entrada COCO local | MD5 `0ac4ecdbbd5a9b3144624ec86009b9e7` |
-| Puntero DVC esperado | MD5 `0ac4ecdbbd5a9b3144624ec86009b9e7` |
-| Remoto DVC DEV | JSON COCO restaurado: `1 file pushed` |
-| Ingesta y validacion | 311 imagenes, 1,038 anotaciones y 3 categorias procesadas |
-| Esquema MariaDB | migraciones oficiales aplicadas; tabla `images` creada |
-| Política `min_images_per_class` | `300`, `fail`, comparación `min` |
-| Política `duplicates` | `5`, `fail`, comparación `max` |
-| Política `invalid_boxes` | `0`, `fail`, comparación `max` |
-| Resto de severidades | desbalance, objetos pequeños y sesgo espacial en `warn` |
-| Suite de pipeline | `94 passed` |
-| Estado Git antes de este informe | limpio; `git diff --check` sin salida |
+| SHA-256 del bundle | 04b30b874bb8ef012dccf02aecaee31043bd40b63effbbcd105a3bb74810abc4 (válido) |
+| Objetos de imagen en MinIO | 311 / 311 |
+| Filas en images | 313 / 313 (311 reales + 2 seed) |
+| Anotaciones en MariaDB | 1,038 / 1,038 |
+| IDs COCO y storage_key | Disponibles para medir pHash real |
 
-Las pruebas aprobadas cubren las validaciones de política, cálculo de área, M3,
-DQ-04 a DQ-08, contratos y splits. Esto confirma que no quedan las mutaciones
-adversariales de comparación, umbrales, cajas o cálculo de área introducidas durante
-las pruebas anteriores.
+Esta restauración resuelve el bloqueo anterior:
+DuplicateBytesUnavailableError ya no ocurre porque el analizador puede resolver
+cada image_id del COCO a su storage_key y descargar sus bytes desde MinIO.
 
-## Bloqueo real de release
+## Integridad de código, política y datos
 
-El JSON COCO ya se restauró en DVC y las migraciones crearon el esquema de MariaDB.
-Sin embargo, la tabla `images` contiene cero registros. Al ejecutar el analizador, el
-pipeline falla cerrado con `DuplicateBytesUnavailableError`: faltan los 311 de 311
-IDs de COCO en esa tabla.
+| Criterio de DQ-10 | Evidencia | Resultado |
+| --- | --- | --- |
+| Cajas negativas o fuera de límites | Suite adversarial y análisis del dataset real | Restauradas / detectables |
+| Imágenes duplicadas temporales | Dataset del release y detección pHash real | No hay inyección temporal; se observó 1 par real |
+| quality.yaml | Umbrales: 300 mínimo, 5 duplicados máximo y 0 cajas inválidas máximo | Restaurado |
+| Comparaciones del Quality Gate | Suite de política y DQ-08 | Restauradas |
+| Cálculo de área de bounding boxes | Suite del pipeline | Restaurado |
+| Fixtures de prueba en producción | git status --short sin salida; datos generados ignorados | No rastreados |
 
-Cada una de esas filas debe conservar el mismo `id` del COCO, incluir su `storage_key`
-y apuntar al archivo real en MinIO. Sin esta relación no se pueden descargar los bytes
-para medir duplicados mediante pHash.
+## Evidencia de ejecución final
 
-El analizador de duplicados está diseñado para fallar cerrado cuando no puede leer esos
-bytes. Sustituirlos por fixtures, datos de ejemplo o un valor de `duplicates: 0`
-fabricado invalidaría el Quality Gate y no es aceptable.
+Se reconstruyó la imagen del profile pipeline antes de la verificación, para evitar
+reutilizar una imagen previa que todavía tenía dataset_version: v0.1.0-dev.
 
-## Para desbloquear DQ-10 y DQ-09
+~~~sh
+docker compose --profile pipeline run --rm --build pipeline sh -c "PYTHONPATH=src dvc pull -f -r dev && PYTHONPATH=src dvc repro"
+~~~
 
-1. Cargar el release oficial correspondiente en MariaDB y MinIO, preservando los IDs
-   que usa el COCO y sus `storage_key`.
-2. Ejecutar desde el profile `pipeline`:
+El resultado generado corresponde a v1.0.0, usa objetos reales y deja los seis
+checks del Quality Gate en pass. La suite completa del pipeline se ejecutó en un
+contenedor temporal con la raíz del repositorio montada de solo lectura para incluir
+los contratos versionados:
 
-   ```sh
-   dvc pull -r dev
-   PYTHONPATH=src dvc repro
-   ```
+~~~text
+94 passed in 4.07s
+~~~
 
-3. Verificar que `data/interim/quality.json` tiene salida `PASS`, sin checks `fail`
-   rojos, y generar el reporte de release de DQ-09 con esas observaciones reales.
+Finalmente, el Gate se ejecutó de forma directa contra las observaciones de v1.0.0
+y terminó correctamente:
 
-Hasta completar estos pasos, DQ-10 tiene su código y sus validaciones restaurados,
-pero no debe cerrarse como aceptado ni debe cerrarse DQ-09.
+~~~text
+QUALITY_GATE_EXIT_CODE=0
+~~~
+
+El árbol de trabajo quedó limpio. Los artefactos de pipeline/data/interim/ están
+ignorados por diseño: son reproducibles y no deben publicarse como datos fuente.
+
+## Conclusión
+
+DQ-10 queda completado. El dataset, la política, la lógica del Gate y las
+validaciones adversariales están restaurados y verificados. La evidencia de calidad
+del release se registra en [dq09-final-quality-report.md](dq09-final-quality-report.md).
