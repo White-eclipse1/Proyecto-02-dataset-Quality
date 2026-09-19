@@ -13,6 +13,7 @@ import dataset_quality.copilot.server as server_module
 from dataset_quality.copilot.agent import (
     CopilotProviderError,
     answer_question,
+    default_contracts_dir,
     tool_specs_from_server,
 )
 from dataset_quality.copilot.contracts import VersionsReport
@@ -401,3 +402,27 @@ def test_anthropic_provider_maps_a_text_response_into_a_final_answer() -> None:
 
     assert turn.tool_calls == []
     assert turn.final_answer == "La respuesta es 42."
+
+
+def test_default_contracts_dir_resolves_to_pipeline_data_interim_not_contracts(
+    tmp_path: Path,
+) -> None:
+    """Review finding (same bug class as Mau's APP-07 review on the Node backend,
+    SPEC-PIPE-001): the Copilot's ``ContractStore`` only ever reads whatever
+    directory it's built with, and this default pointed it at repo-root
+    ``contracts/`` -- the versioned APP-01/APP-05 mock -- instead of
+    ``pipeline/data/interim/``, where ``pipeline/dvc.yaml``'s
+    ``quality_gate``/``split``/``release`` stages actually write
+    quality.json/splits.json/versions.json. With the old default, running
+    `dvc repro` never changed what the Copilot could see, same as it never
+    changed what the Web App displayed before the APP-07 fix.
+    """
+
+    repo_root = tmp_path / "repo"
+    (repo_root / "pipeline" / "data" / "interim").mkdir(parents=True)
+    (repo_root / "contracts").mkdir(parents=True)
+
+    resolved = default_contracts_dir(repo_root)
+
+    assert resolved == repo_root / "pipeline" / "data" / "interim"
+    assert resolved.name != "contracts"

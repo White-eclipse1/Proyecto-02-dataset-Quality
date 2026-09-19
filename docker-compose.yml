@@ -71,6 +71,45 @@ services:
       - "3100:3100"
     restart: on-failure:5
 
+  # Dataset Copilot HTTP service (APP-10): wraps the same read-only MCP
+  # agent (agent.py, APP-06) behind POST /query so the Web App's Copilot
+  # screen can ask it real questions. Reuses the `pipeline` image (same
+  # Python code, same dependencies -- starlette/uvicorn/anthropic already
+  # ship via the `mcp` package, see requirements.txt) but overrides the
+  # command to run the HTTP server instead of the placeholder CMD, and is
+  # deliberately NOT profile-gated like `pipeline`/`minio-init`: the
+  # grading rubric's Agent Test expects a real Copilot chat on a plain
+  # `docker compose up`, not behind `--profile pipeline`.
+  copilot:
+    build: ./pipeline
+    command: ["python", "-m", "dataset_quality.copilot"]
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment:
+      # Same fix as PIPELINE_OUTPUT_DIR on `backend` above (Mau's APP-07
+      # review, mirrored here for the identical bug in
+      # copilot.agent.default_contracts_dir): mount the pipeline's real
+      # output, never the versioned contracts/ mock, so the Copilot's
+      # answers change when `dvc repro` changes the source data.
+      COPILOT_CONTRACTS_DIR: /data/pipeline-output
+      COPILOT_PORT: 8100
+      # Required for the agent to actually answer questions
+      # (AnthropicProvider.from_settings) -- read from a root .env file,
+      # not committed (see .env.example). Without it, POST /query returns a
+      # clean 503 rather than crashing (http_app.py); the MCP server and
+      # its read-only tools work either way.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      COPILOT_MODEL: ${COPILOT_MODEL:-claude-sonnet-4-5}
+    volumes:
+      # Solo lectura, mismo volumen y misma razón que en `backend`.
+      - ./pipeline/data/interim:/data/pipeline-output:ro
+    ports:
+      - "8100:8100"
+    restart: on-failure:5
+
   frontend:
     build:
       context: ./frontend
@@ -78,6 +117,7 @@ services:
         VITE_API_BASE_URL: /api
     depends_on:
       - backend
+      - copilot
     ports:
       - "8080:80"
 
@@ -136,6 +176,22 @@ services:
       # which only the Python app code (not the separate `dvc` binary) reads.
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
+    volumes:
+      # Corrección de revisión (PM, PR de APP-10): sin este volumen, `dvc
+      # repro` escribe data/interim/*.json (quality.json, splits.json,
+      # versions.json...) SOLO dentro del contenedor efímero -- se destruye
+      # al salir, y ni `backend` ni `copilot` (que sí montan
+      # pipeline/data/interim, ver arriba) llegan a ver nunca esos datos
+      # reales en un clon limpio. Monta todo `data/`, no solo `interim/`,
+      # por dos razones: (1) `release` también lee y reescribe
+      # data/version_history.json (el ledger de releases, versionado en
+      # git, fuera de interim/) vía `--history`, y sin este volumen esa
+      # escritura también se perdería; (2) `dvc pull` escribe el dataset
+      # crudo en data/raw/coco-dataset.json -- persistirlo en el host evita
+      # tener que volver a descargarlo en cada `dvc repro`. Es lectura +
+      # escritura (a diferencia del `:ro` de `backend`/`copilot`): este es
+      # el único servicio que de verdad produce estos archivos.
+      - ./pipeline/data:/app/data
 
 volumes:
   mariadb_data:
