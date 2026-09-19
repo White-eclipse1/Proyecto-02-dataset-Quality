@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
-from dataset_quality.versioning.__main__ import _diff, _parse_semver
+from dataset_quality.versioning.__main__ import _diff, _parse_semver, main
 from dataset_quality.versioning.models import VersionSnapshot
 
 
@@ -61,3 +64,99 @@ def test_diff_classes_left_minimum_empty_when_nothing_newly_regresses() -> None:
     diff = _diff(current, previous, min_images_threshold=300)
 
     assert diff.classes_left_minimum == []
+
+
+# --- main()'s version-ordering guard ---------------------------------------
+#
+# `main()` parses `--dataset-version` and checks it against the history ledger
+# *before* it ever reads --coco/--quality-report/--m3-baseline/--observations/
+# --policy, so those can stay as placeholder (non-existent) paths in these
+# tests — the ValueError fires first. Only --history's content matters.
+
+
+def _run_main(monkeypatch: pytest.MonkeyPatch, *, dataset_version: str, history: Path) -> None:
+    argv = [
+        "versioning",
+        "--coco",
+        "unused-coco.json",
+        "--quality-report",
+        "unused-quality.json",
+        "--m3-baseline",
+        "unused-m3.json",
+        "--observations",
+        "unused-observations.json",
+        "--policy",
+        "unused-policy.yaml",
+        "--dataset-version",
+        dataset_version,
+        "--history",
+        str(history),
+        "--output",
+        "unused-output.json",
+    ]
+    monkeypatch.setattr("sys.argv", argv)
+    main()
+
+
+def _existing_release_history(tmp_path: Path, *, version: str) -> Path:
+    """A minimal, schema-valid `version_history.json` ledger with one past release."""
+    history_path = tmp_path / "version_history.json"
+    history_path.write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "entry": {
+                            "version": version,
+                            "released_at": "2026-01-01T00:00:00Z",
+                            "content_hash": "deadbeef",
+                            "quality_status": "pass",
+                            "environments": {
+                                "dev": {
+                                    "provider": "minio",
+                                    "status": "available",
+                                    "synced_at": "2026-01-01T00:00:00Z",
+                                },
+                                "prod": {
+                                    "provider": "s3",
+                                    "status": "pending",
+                                    "synced_at": None,
+                                },
+                            },
+                            "diff_from_previous": None,
+                        },
+                        "snapshot": {
+                            "image_count": 300,
+                            "box_count": 900,
+                            "per_class_counts": {"person": 300, "car": 300},
+                            "small_object_percentage": 5.0,
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    return history_path
+
+
+def test_main_rejects_a_dataset_version_that_does_not_strictly_increase(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    history = _existing_release_history(tmp_path, version="v1.0.0")
+
+    with pytest.raises(ValueError, match="must be strictly greater"):
+        _run_main(monkeypatch, dataset_version="v0.9.0", history=history)
+
+    # Also rejects a *repeated* version, not just a lower one.
+    with pytest.raises(ValueError, match="must be strictly greater"):
+        _run_main(monkeypatch, dataset_version="v1.0.0", history=history)
+
+
+def test_main_requires_v1_0_0_as_the_first_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    empty_history = tmp_path / "version_history.json"  # deliberately never written
+
+    with pytest.raises(ValueError, match="first dataset release must be v1.0.0"):
+        _run_main(monkeypatch, dataset_version="v1.1.0", history=empty_history)
