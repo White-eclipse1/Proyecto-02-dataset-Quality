@@ -58,7 +58,13 @@ docker compose up --build
 Esto levanta los cuatro servicios por defecto (`mariadb`, `minio`, `backend`
 y `frontend`, ver `docker-compose.yml`) -- **no** incluye el pipeline de
 Python, que vive detrás de un profile aparte (ver
-[Pipeline (Python)](#pipeline-python) más abajo). De esos cuatro, tres
+[Pipeline (Python)](#pipeline-python) más abajo). El Portal de Anotación
+(Proyecto 1, rutas `/dashboard`, `/search`, `/upload`) funciona con solo este
+comando. **Las 6 pantallas de Dataset Quality** (`/overview`, `/analyzers`,
+`/splits`, `/versions`, `/copilot`, `/settings`) necesitan además que el
+pipeline haya corrido al menos una vez -- son las que leen
+`pipeline/data/interim/*.json` -- ver la sección de DVC más abajo para el
+comando exacto; sin eso, cargan pero sin datos. De esos cuatro, tres
 exponen una URL a la que entrar desde el navegador (MariaDB no tiene UI
 propia, solo la usa `backend` internamente):
 
@@ -194,5 +200,14 @@ dvc pull -r dev
 ```
 
 `dvc repro` corrido dos veces no debe rehacer ninguna etapa; tocar `params.yaml` o `quality.yaml` solo debe rehacer las etapas realmente afectadas (`dvc dag` muestra el grafo completo).
+
+**Su salida ahora sí llega al host** (fix post-auditoría externa, OPS-09): el servicio `pipeline` monta `./pipeline/data/interim:/app/data/interim`, así que `quality.json`/`splits.json`/`versions.json` sobreviven a que el contenedor `--rm` termine — antes de este fix se escribían solo dentro de la capa del contenedor y desaparecían al salir, y las 6 pantallas de Dataset Quality (`/overview`, `/analyzers`, `/splits`, `/versions`) mostraban un dashboard sin datos en un clon limpio, sin ningún error visible. `backend` lee ese mismo directorio en modo solo lectura (`docker-compose.yml`). Por eso el orden real para tener las 6 pantallas con datos reales desde un clon limpio es:
+
+```bash
+docker compose --profile pipeline run --rm pipeline sh -c "PYTHONPATH=src dvc pull -r dev && PYTHONPATH=src dvc repro"
+docker compose up --build
+```
+
+(el primer comando puede tardar si es la primera vez — descarga el dataset real desde MinIO y corre las 6 etapas).
 
 **Limitación conocida:** la verificación de `duplicates` (pHash) necesita descargar las imágenes reales desde el object store — el export COCO solo trae el nombre de archivo, no el `storage_key` de MinIO, así que la etapa `analyze` lo resuelve consultando la tabla `images` de MariaDB por `id` (los IDs de COCO son los mismos IDs de la BD). `duplicates` es un check `severity: fail` en `quality.yaml`, así que si esa BD/objeto no está disponible en el entorno donde corre `dvc repro` (por ejemplo, corriendo contra un dataset anotado en otra instancia), la etapa `analyze` **falla cerrado**: lanza `DuplicateBytesUnavailableError` y no se genera `quality.json` — nunca se reporta un `duplicates: 0` fabricado que dejaría pasar el gate sin haber medido nada de verdad.

@@ -41,6 +41,19 @@ All commands run inside the `pipeline` Compose profile (real MinIO + the real 31
 
 No static AWS credential (`aws_secret_access_key`, `aws-access-key-id`, a literal `AKIA…` key) was found anywhere in history — consistent with `terraform.yml`'s own CI gate, which fails the build on exactly this pattern.
 
+## Clean-clone startup (M1) — found broken by an external evaluation audit, fixed here
+
+The commands above all ran against an already-populated working tree (this machine's `pipeline/data/interim/` had real output from prior runs). A separate, independent audit against the official course evaluation rubric caught something none of the commands above exercise: **a genuinely fresh clone never produces a working dashboard**, because:
+
+1. `pipeline/data/interim/*.json` (the files `backend` reads for the Quality/Splits/Versions screens) are gitignored — correct, they're pipeline output, not source — but that means they simply don't exist after `git clone`.
+2. The documented fix, `docker compose --profile pipeline run --rm pipeline dvc repro`, **did not actually fix it**: the `pipeline` service had no `volumes:` entry for `data/interim`, so `dvc repro`'s output was written only inside that `--rm` container's own writable layer and destroyed the moment the container exited. `backend`'s bind mount of `./pipeline/data/interim` (read-only) never saw anything. The six Dataset Quality screens loaded without error but with no data — a silent failure, not a crash, which is why it wasn't caught by `pytest`/CI (those don't exercise the Compose networking/volume layer at all).
+
+**Fixed in this PR**: added `volumes: - ./pipeline/data/interim:/app/data/interim` to the `pipeline` service in `docker-compose.yml`, and updated the root `README.md` (both the "Levantar el stack" section and the DVC section) to document the real, working order: run the pipeline profile once, then `docker compose up`.
+
+**Re-verified for real after the fix**, in this same session: ran `docker compose --profile pipeline run --rm pipeline sh -c "dvc pull -r dev --force && dvc repro"` — host-side `pipeline/data/interim/*.json` timestamps updated immediately after the `--rm` container exited (confirmed via `ls -la`), and the live `/versions` screen (no backend/frontend restart) picked up the real `v1.0.0` release data on the next request — proving the persistence path now genuinely works end to end, not just that the command exits 0.
+
+This does not change any of the Required Commands results above (all of those already ran inside the `pipeline` profile directly, which was never affected by this bug) — it specifically fixes the gap between "the pipeline can produce correct output" (already true) and "a fresh clone's Web App can actually see that output" (was false, now true).
+
 ## Acceptance criteria (issue #48)
 
 - [x] Ruff passes.
@@ -53,4 +66,4 @@ No static AWS credential (`aws_secret_access_key`, `aws-access-key-id`, a litera
 - [x] No secrets found in repository history.
 - [x] No prohibited files tracked.
 
-All checks green on `459ae56`. Release candidate technically approved — pending human review before OPS-10 (issue #49) proceeds, which also needs APP-10/DQ-09/DQ-10 closed independently of this ticket.
+All checks green on `459ae56`, plus the clean-clone (M1) gap found and fixed above. Release candidate technically approved as of this branch's HEAD — pending human review before OPS-10 (issue #49) proceeds, which also needs APP-10/DQ-09/DQ-10 closed independently of this ticket.
