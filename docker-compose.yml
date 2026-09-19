@@ -113,15 +113,6 @@ services:
         condition: service_started
       minio-init:
         condition: service_completed_successfully
-    # Without this, `dvc repro`'s output (quality.json/splits.json/versions.json)
-    # is written inside this container's own writable layer and vanishes on
-    # `--rm` — `backend` (which bind-mounts this same host path read-only,
-    # see below) never sees it. Found by an external M1 (clean-clone) audit:
-    # the documented one-command startup silently produced a dashboard with
-    # no data on a fresh clone. `data/raw`/`.dvc/cache` are deliberately NOT
-    # persisted here — only the interim outputs backend actually reads.
-    volumes:
-      - ./pipeline/data/interim:/app/data/interim
     environment:
       DB_HOST: mariadb
       DB_PORT: 3306
