@@ -40,7 +40,7 @@ Worked example (from a real end-to-end test run of the `release` stage): image c
 
 This isn't just the theoretical argument: it was run for real, end to end, against the real 311-image annotated dataset (loaded into MariaDB + MinIO from the team's EC2 instance — not seed/synthetic data).
 
-**DEV — run locally** (`docker compose --profile pipeline run --rm pipeline sh -c '...'`, real MinIO, real dataset):
+**DEV — run locally** (`docker compose --profile pipeline run --rm pipeline sh -c '...'`, real MinIO, real dataset), including `dvc repro` run twice to demonstrate real rerun-avoidance (Section 6's own acceptance test):
 
 ```
 $ dvc pull -r dev
@@ -55,14 +55,55 @@ A       data/interim/versions.json
 A       data/raw/coco-dataset.json
 9 files fetched and 9 files added
 
+$ dvc repro
+'data/raw/coco-dataset.json.dvc' didn't change, skipping
+Stage 'ingest' didn't change, skipping
+Stage 'validate' didn't change, skipping
+Stage 'analyze' didn't change, skipping
+Stage 'quality_gate' didn't change, skipping
+Stage 'split' didn't change, skipping
+Running stage 'release':
+> ...
+Updating lock file 'dvc.lock'
+
+$ dvc repro
+'data/raw/coco-dataset.json.dvc' didn't change, skipping
+Stage 'ingest' didn't change, skipping
+Stage 'validate' didn't change, skipping
+Stage 'analyze' didn't change, skipping
+Stage 'quality_gate' didn't change, skipping
+Stage 'split' didn't change, skipping
+Stage 'release' didn't change, skipping
+Data and pipelines are up to date.
+
 $ dvc push -r dev
-Everything is up to date.
+1 file pushed
 
 $ dvc status -r dev
 Cache and remote 'dev' are in sync.
 
+$ dvc status
+Data and pipelines are up to date.
+
 $ md5sum dvc.lock
-0a9ee8b93739738d4f90264c5bf063a5  dvc.lock
+fe50f93bfde715311f4a11a2ceeaac74  dvc.lock
+```
+
+`release` re-runs on the first `dvc repro` in the transcript above (not "skipped" like the other five stages) because the `dvc.lock` being pulled at that point still had stale hashes for two of `release`'s own dependencies (`versioning/__main__.py`/`models.py` — a Docker-build/line-ending artifact from earlier in this branch's history, fixed in a follow-up commit; the files themselves never actually differed). With that fixed, a fully fresh `dvc pull -r dev` + `dvc repro` skips **all six** stages immediately — confirmed separately, same dataset, same remote:
+
+```
+$ dvc pull -r dev
+9 files fetched and 9 files added
+
+$ dvc repro
+'data/raw/coco-dataset.json.dvc' didn't change, skipping
+Stage 'ingest' didn't change, skipping
+Stage 'validate' didn't change, skipping
+Stage 'analyze' didn't change, skipping
+Stage 'quality_gate' didn't change, skipping
+Stage 'split' didn't change, skipping
+Stage 'release' didn't change, skipping
+Data and pipelines are up to date.
 ```
 
 **PROD — real AWS S3, no static credentials.** A local `dvc push -r prod` was deliberately **not** run from a developer machine for this evidence: that would need a real long-lived AWS access key sitting on a laptop, which is exactly what the OIDC setup (`infra/modules/github-oidc`, Section 9) exists to avoid — and a static key anywhere in this repo's history is an automatic 0 on that section plus a security finding (Section 9, M2). PROD's evidence instead comes from `.github/workflows/release.yml` (`workflow_dispatch`, OIDC-authenticated, no `aws-access-key-id` anywhere): a real run against `main` right after this merged, writing and reading back a marker object in the real PROD buckets through the OIDC-assumed role.
