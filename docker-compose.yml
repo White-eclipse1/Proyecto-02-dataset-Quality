@@ -176,6 +176,22 @@ services:
       # which only the Python app code (not the separate `dvc` binary) reads.
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
+    volumes:
+      # Corrección de revisión (PM, PR de APP-10): sin este volumen, `dvc
+      # repro` escribe data/interim/*.json (quality.json, splits.json,
+      # versions.json...) SOLO dentro del contenedor efímero -- se destruye
+      # al salir, y ni `backend` ni `copilot` (que sí montan
+      # pipeline/data/interim, ver arriba) llegan a ver nunca esos datos
+      # reales en un clon limpio. Monta todo `data/`, no solo `interim/`,
+      # por dos razones: (1) `release` también lee y reescribe
+      # data/version_history.json (el ledger de releases, versionado en
+      # git, fuera de interim/) vía `--history`, y sin este volumen esa
+      # escritura también se perdería; (2) `dvc pull` escribe el dataset
+      # crudo en data/raw/coco-dataset.json -- persistirlo en el host evita
+      # tener que volver a descargarlo en cada `dvc repro`. Es lectura +
+      # escritura (a diferencia del `:ro` de `backend`/`copilot`): este es
+      # el único servicio que de verdad produce estos archivos.
+      - ./pipeline/data:/app/data
 
 volumes:
   mariadb_data:
