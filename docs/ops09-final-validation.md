@@ -69,16 +69,16 @@ The evidence in this document was therefore produced on an already-populated env
 
 **Fixed**: the environment that produced release `v1.0.0` is published as a GitHub Release asset ([`v1.0.0-data`](https://github.com/White-eclipse1/Proyecto-02-dataset-Quality/releases/tag/v1.0.0-data), `dq-env-bundle-v1.0.0.zip`, ~496 MiB) — the 311 real images, the release's DVC cache, and the MariaDB dump (313 rows in `images`, 1038 in `annotations`). `scripts/restore-env.sh` downloads it, extracts it to a gitignored `.dq-env-bundle/`, and delegates to the bundle's own `restore.sh`, which uploads the objects to MinIO, loads the dump and verifies the counts, failing closed if they don't match. The root `README.md` documents it as the first step of the clean-clone flow, ahead of `dvc repro`. The asset deliberately lives on the Release, not in git: the dataset is versioned with DVC, which is also what the rubric requires.
 
-**Executed for real** (this machine, after the fix): `./scripts/restore-env.sh` exits 0 and the whole documented chain works.
+**Executed for real, from empty volumes**: `./scripts/restore-env.sh` exits 0 and the whole documented chain works. The run used an isolated Compose project (`COMPOSE_PROJECT_NAME=dqclean`) after `docker compose down -v`, so `dqclean_mariadb_data` and `dqclean_minio_data` were created brand new (`select count(*) from images` returned **0** before the restore). The developer's own stack was only stopped, never removed, and was restarted afterwards with its data intact; the `dqclean` project and volumes were deleted at the end.
 
 | Step | Result |
 | --- | --- |
-| SHA-256 of the downloaded asset | matches the pinned digest `04b30b87…`, checked before extracting |
+| SHA-256 of the downloaded asset | matches the pinned digest `04b30b87…`, checked before extracting; marker written after |
 | Bundle's `restore.sh` contract | takes the repo dir as `$1` and validates it holds `docker-compose.yml` — matches what the wrapper passes |
 | Objects in MinIO | 311 (expected 311) |
 | Rows in `images` | 313 (expected 313 = 311 + 2 seed) |
 | Rows in `annotations` | 1038 (expected 1038) |
-| `dvc pull -r dev` after restore | **resolves** — `9 files fetched and 9 files added` |
+| `dvc pull -r dev` after restore | **resolves** — `9 files fetched` from the freshly restored MinIO |
 | `dvc repro` after pull | all 7 nodes `didn't change, skipping` — `Data and pipelines are up to date.` |
 | `pipeline/data/interim/*.json` on the host | all 8 present after the `--rm` container exited (APP-10's mount working) |
 | `GET /quality-report` (backend) | real data: `dataset_version: v1.0.0`, `overall_status: pass`, `min_images_per_class` observed 309 |
@@ -88,7 +88,7 @@ The evidence in this document was therefore produced on an already-populated env
 
 That answers the question left open above: the bundle's `restore.sh` mirrors **two** buckets, `image-annotations` and `dvc-cache`, which is why `dvc pull -r dev` resolves afterwards. It also runs `docker compose up -d` itself and waits for both MariaDB and the backend-created schema before loading the dump, so it is safe to run whether or not the stack is already up.
 
-**Still not proven**: this run happened on a machine whose MariaDB and MinIO volumes already held data from earlier sessions, so it exercised the restore *path* but not a pristine environment. A true clean-machine test needs `docker compose down -v` (or a fresh clone on another host) before `./scripts/restore-env.sh`. Nothing observed here suggests it would behave differently — `mc mirror --overwrite` and the dump's `DROP TABLE` both write unconditionally — but it has not been run that way.
+**Bundle reuse is verified too**: after extracting, the script stores the verified SHA-256 in `.dq-env-bundle/.sha256-verificado`, and a later run only reuses the directory if that marker equals the pinned digest. A directory without the marker (an install made by the previous, unverified version of the script) or with a different digest is discarded and downloaded again, so the bundle's `restore.sh` is never executed unless it came out of a ZIP that passed the check. The clean run above hit exactly that path: the machine had a legacy `.dq-env-bundle/` with no marker, and the script re-downloaded, verified (`OK: 04b30b87…`) and re-extracted it before restoring. A scratch-copy test also confirmed that a legacy directory (no marker), a wrong marker and a matching marker behave as described, with a planted `restore.sh` never executing in the first two.
 
 ## Acceptance criteria (issue #48)
 

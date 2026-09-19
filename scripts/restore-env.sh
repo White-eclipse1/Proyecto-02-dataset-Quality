@@ -69,11 +69,20 @@ print(h.hexdigest())' "$file"
 
 command -v curl >/dev/null 2>&1 || die "hace falta curl para descargar el bundle."
 
-if [[ -d "$BUNDLE_DIR/minio" ]]; then
-  # Ya extraído de una corrida anterior: el ZIP ya pasó la verificación en su
-  # momento, y a esta altura el contenido es un directorio local del usuario.
-  echo "==> El bundle ya está en .dq-env-bundle/, no se descarga de nuevo"
+# Marcador con el digest del ZIP que se verificó antes de extraer. Sin él no hay
+# forma de saber si lo que hay en .dq-env-bundle/ salió de un ZIP verificado (una
+# instalación hecha con la versión anterior de este script extraía sin verificar,
+# y luego ejecutaba ese restore.sh sin más). Se exige que coincida con el digest
+# fijado: si falta, sobra o es de otro release, se descarta todo y se baja de nuevo.
+MARKER="$BUNDLE_DIR/.sha256-verificado"
+
+if [[ -d "$BUNDLE_DIR" ]] \
+  && [[ "$(cat "$MARKER" 2>/dev/null || true)" == "$EXPECTED_SHA256" ]]; then
+  echo "==> El bundle ya está en .dq-env-bundle/ y coincide con el digest fijado, no se descarga de nuevo"
 else
+  if [[ -d "$BUNDLE_DIR" ]]; then
+    echo "==> .dq-env-bundle/ no tiene una verificación SHA-256 vigente (¿instalación anterior?): se descarta y se descarga de nuevo"
+  fi
   echo "==> Descargando el bundle de datos (~496 MiB) desde GitHub Releases"
   curl -fL --progress-bar "$BUNDLE_URL" -o "$BUNDLE_ZIP"
 
@@ -105,6 +114,7 @@ script con el digest que publica GitHub (ver el comentario de arriba)."
     die "hace falta unzip o python3 para extraer el bundle."
   fi
   mv "$REPO_DIR/dq-env-bundle" "$BUNDLE_DIR"
+  echo "$actual" >"$MARKER"
   rm -f "$BUNDLE_ZIP"
 fi
 
