@@ -96,15 +96,17 @@ bajando el objeto de MinIO. Sin esos datos falla cerrado a propósito
 (`DuplicateBytesUnavailableError`) en vez de reportar un `duplicates: 0`
 fabricado -- ver la "Limitación conocida" al final de la sección de DVC.
 
-Para dejar el entorno con el dataset real del release `v1.0.0`, **con el stack
-ya levantado** (el script escribe en MinIO y en MariaDB, así que necesita que
-esos servicios estén corriendo) y desde un shell POSIX (`bash`; en Windows,
-Git Bash o WSL -- no PowerShell):
+Para dejar el entorno con el dataset real del release `v1.0.0`, desde un shell
+POSIX (`bash`; en Windows, Git Bash o WSL -- no PowerShell):
 
 ```bash
-docker compose up -d --build   # si aún no lo está
 ./scripts/restore-env.sh
 ```
+
+No hace falta levantar nada antes: el restore arranca el stack por su cuenta
+(`docker compose up -d`) y espera a que MariaDB y el esquema del backend
+existan, porque escribe en MinIO y en MariaDB. Si ya lo tenías arriba,
+tampoco estorba.
 
 Necesita `curl` y, para descomprimir, `unzip` o Python (usa el que encuentre).
 
@@ -252,16 +254,16 @@ dvc pull -r dev
 **Su salida tiene que llegar al host** (hallazgo de la auditoría externa, OPS-09): sin un `volumes:` para `data/` en el servicio `pipeline`, `quality.json`/`splits.json`/`versions.json` se escriben solo dentro de la capa del contenedor `--rm` y desaparecen al salir — `backend` bind-montea ese mismo directorio del host en solo lectura y nunca ve nada, así que en un clon limpio las 6 pantallas de Dataset Quality (`/overview`, `/analyzers`, `/splits`, `/versions`, `/copilot`, `/settings`) cargan sin error pero sin datos. El montaje que lo resuelve (`./pipeline/data:/app/data`) lo aporta APP-10 (PR #55), que necesita esa misma persistencia para el Copilot; por eso no se duplica aquí. Con él en su lugar, el orden real para tener las 6 pantallas con datos reales desde un clon limpio es:
 
 ```bash
-docker compose up -d --build      # MariaDB y MinIO tienen que estar arriba ya
 ./scripts/restore-env.sh          # solo la primera vez, en un clon limpio
-docker compose --profile pipeline run --rm pipeline sh -c "PYTHONPATH=src dvc repro"
+docker compose --profile pipeline run --rm pipeline sh -c "PYTHONPATH=src dvc pull -r dev && PYTHONPATH=src dvc repro"
 ```
 
-El orden importa: `restore-env.sh` **escribe** en MinIO y en MariaDB (sube las
-311 imágenes y carga el dump), así que esos dos servicios tienen que estar
-corriendo antes — por eso el `docker compose up` va primero y no al final.
-Con el stack ya arriba, las 6 pantallas recogen los datos en la siguiente
-petición, sin reiniciar nada.
+El restore levanta el stack por su cuenta, así que ese es literalmente el
+primer comando de un clon limpio. Con el stack arriba, las 6 pantallas
+recogen los datos en la siguiente petición, sin reiniciar nada — verificado
+de punta a punta: tras el restore, `dvc pull -r dev` trae los 9 archivos del
+remote DEV, `dvc repro` reporta las 7 etapas sin cambios, y
+`GET /quality-report` responde con `v1.0.0` / `pass` reales.
 
 Y ese restore es lo que hace reproducible todo lo demás: en un clon limpio el
 bucket `dvc-cache` de MinIO lo crea `minio-init` **vacío** y el dataset crudo

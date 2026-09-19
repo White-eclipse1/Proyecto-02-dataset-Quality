@@ -69,7 +69,26 @@ The evidence in this document was therefore produced on an already-populated env
 
 **Fixed**: the environment that produced release `v1.0.0` is published as a GitHub Release asset ([`v1.0.0-data`](https://github.com/White-eclipse1/Proyecto-02-dataset-Quality/releases/tag/v1.0.0-data), `dq-env-bundle-v1.0.0.zip`, ~496 MiB) — the 311 real images, the release's DVC cache, and the MariaDB dump (313 rows in `images`, 1038 in `annotations`). `scripts/restore-env.sh` downloads it, extracts it to a gitignored `.dq-env-bundle/`, and delegates to the bundle's own `restore.sh`, which uploads the objects to MinIO, loads the dump and verifies the counts, failing closed if they don't match. The root `README.md` documents it as the first step of the clean-clone flow, ahead of `dvc repro`. The asset deliberately lives on the Release, not in git: the dataset is versioned with DVC, which is also what the rubric requires.
 
-**Still to confirm on a genuinely clean machine**: that `./scripts/restore-env.sh` → `dvc repro` → `docker compose up` runs end to end from a fresh clone with empty Docker volumes, including whether the restored state also makes `dvc pull -r dev` resolve (the bundle ships the DVC cache; whether its `restore.sh` also seeds the `dvc-cache` bucket in MinIO has not been verified here).
+**Executed for real** (this machine, after the fix): `./scripts/restore-env.sh` exits 0 and the whole documented chain works.
+
+| Step | Result |
+| --- | --- |
+| SHA-256 of the downloaded asset | matches the pinned digest `04b30b87…`, checked before extracting |
+| Bundle's `restore.sh` contract | takes the repo dir as `$1` and validates it holds `docker-compose.yml` — matches what the wrapper passes |
+| Objects in MinIO | 311 (expected 311) |
+| Rows in `images` | 313 (expected 313 = 311 + 2 seed) |
+| Rows in `annotations` | 1038 (expected 1038) |
+| `dvc pull -r dev` after restore | **resolves** — `9 files fetched and 9 files added` |
+| `dvc repro` after pull | all 7 nodes `didn't change, skipping` — `Data and pipelines are up to date.` |
+| `pipeline/data/interim/*.json` on the host | all 8 present after the `--rm` container exited (APP-10's mount working) |
+| `GET /quality-report` (backend) | real data: `dataset_version: v1.0.0`, `overall_status: pass`, `min_images_per_class` observed 309 |
+| `GET /health` on `copilot:8100` and through nginx `/copilot-api/` | `{"status":"ok"}` both ways |
+| `GET /copilot` (the SPA route) | HTTP 200 — the nginx/React-Router collision APP-10 fixed stays fixed |
+| `POST /copilot-api/query` with no `ANTHROPIC_API_KEY` | clean `503` with a fixed message, no traceback |
+
+That answers the question left open above: the bundle's `restore.sh` mirrors **two** buckets, `image-annotations` and `dvc-cache`, which is why `dvc pull -r dev` resolves afterwards. It also runs `docker compose up -d` itself and waits for both MariaDB and the backend-created schema before loading the dump, so it is safe to run whether or not the stack is already up.
+
+**Still not proven**: this run happened on a machine whose MariaDB and MinIO volumes already held data from earlier sessions, so it exercised the restore *path* but not a pristine environment. A true clean-machine test needs `docker compose down -v` (or a fresh clone on another host) before `./scripts/restore-env.sh`. Nothing observed here suggests it would behave differently — `mc mirror --overwrite` and the dump's `DROP TABLE` both write unconditionally — but it has not been run that way.
 
 ## Acceptance criteria (issue #48)
 
