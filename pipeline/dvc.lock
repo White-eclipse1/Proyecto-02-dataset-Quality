@@ -306,13 +306,13 @@ stages:
       isexec: true
     - path: src/dataset_quality/versioning/__main__.py
       hash: md5
-      md5: 35efea2b2b3539221aa7e69f933630ae
-      size: 7490
+      md5: d3f25e4f1dae9de0a3d720d7e1ea87e2
+      size: 7322
       isexec: true
     - path: src/dataset_quality/versioning/models.py
       hash: md5
-      md5: 47b41edd9adbe189f8f536eac0c3dd0e
-      size: 1749
+      md5: 39cdc255d1f42dcc1886a94348780c36
+      size: 1703
       isexec: true
     params:
       params.yaml:
@@ -320,5 +320,5 @@ stages:
     outs:
     - path: data/interim/versions.json
       hash: md5
-      md5: 7492dbad4298a199439ed2ff48bc60fd
+      md5: 6489a0f0628f5acfcc9a6f5a135b13ea
       size: 593
