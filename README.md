@@ -115,8 +115,10 @@ su SHA-256 contra el digest que publica GitHub antes de extraer o ejecutar
 nada** (si no coincide, borra la descarga y corta), sube las 311 imágenes a
 MinIO, carga el dump de MariaDB (313 filas en `images`, 1038 en `annotations`)
 y verifica los conteos -- si algo no cuadra corta con error en vez de dejarte
-seguir con datos a medias. Si el bundle ya está en disco, no lo vuelve a
-descargar.
+seguir con datos a medias. Si el bundle ya está en disco, solo lo reutiliza
+si quedó registrado el digest verificado (`.dq-env-bundle/.sha256-verificado`);
+si falta (instalación de una versión anterior del script) o no coincide, lo
+descarta y lo descarga y verifica de nuevo.
 
 El digest esperado está fijado en el script y se puede contrastar con la
 fuente sin confiar en el repo:
