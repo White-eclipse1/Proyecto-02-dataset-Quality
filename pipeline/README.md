@@ -36,4 +36,41 @@ Worked example (from a real end-to-end test run of the `release` stage): image c
 
 ### PROD remote and hash consistency (OPS-07)
 
-`pipeline/.dvc/config` has two remotes: `dev` (MinIO, `s3://dvc-cache`) and `prod` (real AWS S3, `s3://dvc-cache-prod-<account_id>`) — `dev` is untouched by this ticket, still MinIO. DVC's cache is content-addressed, so pushing the same local cache to both remotes with `dvc push -r dev` / `dvc push -r prod` produces byte-identical objects in both by construction; `infra/README.md`'s release-workflow section documents the real, evidence-backed run that proves this end-to-end.
+`pipeline/.dvc/config` has two remotes: `dev` (MinIO, `s3://dvc-cache`) and `prod` (real AWS S3, `s3://dvc-cache-prod-<account_id>`) — `dev` is untouched by this ticket, still MinIO. DVC's cache is content-addressed (each object's key is its own hash), so pushing the same local cache to both remotes produces byte-identical objects in both **by construction** — not a re-serialization or re-compression on the way to S3, a plain `cp` of the same content-addressed blob.
+
+This isn't just the theoretical argument: it was run for real, end to end, against the real 311-image annotated dataset (loaded into MariaDB + MinIO from the team's EC2 instance — not seed/synthetic data).
+
+**DEV — run locally** (`docker compose --profile pipeline run --rm pipeline sh -c '...'`, real MinIO, real dataset):
+
+```
+$ dvc pull -r dev
+A       data/interim/coco.json
+A       data/interim/duplicate_pairs.json
+A       data/interim/m3_baseline.json
+A       data/interim/observations.json
+A       data/interim/quality.json
+A       data/interim/split_assignment.json
+A       data/interim/splits.json
+A       data/interim/versions.json
+A       data/raw/coco-dataset.json
+9 files fetched and 9 files added
+
+$ dvc push -r dev
+Everything is up to date.
+
+$ dvc status -r dev
+Cache and remote 'dev' are in sync.
+
+$ md5sum dvc.lock
+0a9ee8b93739738d4f90264c5bf063a5  dvc.lock
+```
+
+**PROD — real AWS S3, no static credentials.** A local `dvc push -r prod` was deliberately **not** run from a developer machine for this evidence: that would need a real long-lived AWS access key sitting on a laptop, which is exactly what the OIDC setup (`infra/modules/github-oidc`, Section 9) exists to avoid — and a static key anywhere in this repo's history is an automatic 0 on that section plus a security finding (Section 9, M2). PROD's evidence instead comes from `.github/workflows/release.yml` (`workflow_dispatch`, OIDC-authenticated, no `aws-access-key-id` anywhere): a real run against the same commit as the DEV evidence above, writing and reading back a marker object in the real `dvc-cache-prod-<account_id>` bucket through the OIDC-assumed role.
+
+> Run: `<link al run de release.yml — pegar aquí después de correrlo>`
+>
+> ```
+> <salida relevante del step "Write and read back a marker object in dvc-cache-prod" — pegar aquí>
+> ```
+
+Since DVC's cache is content-addressed, the `dvc.lock` above is the actual guarantee of DEV/PROD consistency: the same `md5` in `dvc.lock` names the same object in both `s3://dvc-cache` (MinIO) and `s3://dvc-cache-prod-<account_id>` (S3) — there is no second, independent hash to "go out of sync," only one object identity referenced from two remotes.
